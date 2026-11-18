@@ -1,29 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Quote, ChevronLeft, ChevronRight, MessageSquareQuote, Star, Tag } from 'lucide-react';
-import { siteData } from '../data/siteData';
 import { adminStorage } from '../utils/adminStorage';
 
 export const TestimonialSection = () => {
   const [current, setCurrent] = useState(0);
-  const [testimonials] = useState(() => {
-    try {
-      const saved = adminStorage.getTestimonials();
-      return saved && saved.length > 0 ? saved : siteData.testimonials;
-    } catch {
-      return siteData.testimonials;
-    }
-  });
+  const [testimonials, setTestimonials] = useState(() => adminStorage.getTestimonials());
+
+  useEffect(() => {
+    const syncTestimonials = () => {
+      const next = adminStorage.getTestimonials();
+      setTestimonials(next);
+      setCurrent(0);
+    };
+    window.addEventListener('bpa-data-updated', syncTestimonials);
+    window.addEventListener('storage', syncTestimonials);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncTestimonials);
+      window.removeEventListener('storage', syncTestimonials);
+    };
+  }, []);
 
   const handlePrev = () => {
+    if (testimonials.length === 0) return;
     setCurrent((prev) => (prev - 1 + testimonials.length) % testimonials.length);
   };
 
   const handleNext = () => {
+    if (testimonials.length === 0) return;
     setCurrent((prev) => (prev + 1) % testimonials.length);
   };
 
-  const t = testimonials[current];
+  const safeIndex = testimonials.length > 0 ? current % testimonials.length : 0;
+  const t = testimonials[safeIndex];
 
   return (
     <section className="py-16 sm:py-24 bg-gradient-to-b from-white to-slate-100 relative overflow-hidden">
@@ -44,6 +53,17 @@ export const TestimonialSection = () => {
 
         {/* Carousel Card */}
         <div className="max-w-4xl mx-auto">
+          {testimonials.length === 0 ? (
+            <div className="bg-white rounded-3xl p-10 text-center shadow-elevated border border-dashed border-slate-300 space-y-2.5">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                <MessageSquareQuote className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800">Belum ada testimoni</h3>
+              <p className="text-xs text-slate-500">
+                Ulasan dan testimoni penyewa belum ditambahkan oleh admin.
+              </p>
+            </div>
+          ) : (
           <div className="bg-white rounded-3xl p-6 sm:p-12 shadow-elevated border border-slate-200/80 relative">
             <div className="absolute top-6 right-8 text-uii-blue-100 hidden sm:block pointer-events-none">
               <Quote className="w-20 h-20 opacity-40" />
@@ -57,7 +77,7 @@ export const TestimonialSection = () => {
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={t.id}
+                key={t.id || safeIndex}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -65,14 +85,14 @@ export const TestimonialSection = () => {
                 className="space-y-6"
               >
                 <blockquote className="text-base sm:text-xl font-medium text-slate-800 leading-relaxed italic">
-                  "{t.quote}"
+                  "{t.content || t.quote || ''}"
                 </blockquote>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-5 border-t border-slate-100">
                   <div className="flex items-center space-x-4">
                     <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-uii-gold shadow-md flex-shrink-0 bg-uii-blue-50">
                       <img
-                        src={t.image}
+                        src={t.image || '/images/Profile-picture1.png'}
                         alt={t.name}
                         className="w-full h-full object-cover"
                         onError={(e) => { e.target.src = '/images/Profile-picture1.png'; }}
@@ -80,15 +100,17 @@ export const TestimonialSection = () => {
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-uii-blue-950">{t.name}</h3>
-                      <p className="text-xs text-slate-500 font-medium">{t.role || t.position}</p>
+                      <p className="text-xs text-slate-500 font-medium">
+                        {[t.role || t.position, t.org].filter(Boolean).join(' • ')}
+                      </p>
                     </div>
                   </div>
 
-                  {(t.assetRented || t.classYear) && (
+                  {(t.asset || t.assetRented || t.classYear) && (
                     <div className="self-start sm:self-center">
                       <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-uii-blue-50 text-uii-blue-900 border border-uii-blue-200/70 text-xs font-semibold">
                         <Tag className="w-3.5 h-3.5 text-uii-gold-600 flex-shrink-0" />
-                        <span>{t.assetRented || t.classYear}</span>
+                        <span>{t.asset || t.assetRented || t.classYear}</span>
                       </span>
                     </div>
                   )}
@@ -97,14 +119,15 @@ export const TestimonialSection = () => {
             </AnimatePresence>
 
             {/* Navigation buttons */}
+            {testimonials.length > 1 && (
             <div className="flex items-center justify-between pt-8 mt-6 border-t border-slate-100">
               <div className="flex items-center space-x-2">
                 {testimonials.map((item, idx) => (
                   <button
-                    key={item.id}
+                    key={item.id || idx}
                     onClick={() => setCurrent(idx)}
                     className={`h-2.5 rounded-full transition-all ${
-                      idx === current ? 'w-8 bg-uii-blue-900' : 'w-2.5 bg-slate-200'
+                      idx === safeIndex ? 'w-8 bg-uii-blue-900' : 'w-2.5 bg-slate-200'
                     }`}
                     aria-label={`Testimoni ${idx + 1}`}
                   />
@@ -128,7 +151,9 @@ export const TestimonialSection = () => {
                 </button>
               </div>
             </div>
+            )}
           </div>
+          )}
         </div>
       </div>
     </section>

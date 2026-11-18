@@ -20,6 +20,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { adminStorage } from '../utils/adminStorage';
+import { neonApi } from '../services/neonDb';
 import { GoogleAuthModal } from './GoogleAuthModal';
 import { triggerGoogleAuthFlow } from '../services/googleAuth';
 
@@ -53,9 +54,13 @@ export const AuthModal = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+  const [googleAuthMode, setGoogleAuthMode] = useState('login');
+  const [pendingGoogleProfile, setPendingGoogleProfile] = useState(null);
+
   if (!isOpen) return null;
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -64,33 +69,68 @@ export const AuthModal = ({
       return;
     }
 
-    const emailVal = loginIdentifier.trim();
-    const displayName = emailVal.includes('@') ? emailVal.split('@')[0] : emailVal;
+    const emailVal = loginIdentifier.trim().toLowerCase();
 
-    // Simulasi Login Berhasil
-    const userData = {
-      name: displayName,
-      email: emailVal,
-      identifier: emailVal,
-      category: 'Pengguna',
-      phone: '081234567890',
-      org: 'Penyewa BPA',
-      loginAt: new Date().toLocaleString('id-ID')
-    };
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailVal, password: loginPassword })
+      });
+      const data = await res.json();
 
-    onLogin(userData);
-    setSuccessMessage('Berhasil masuk ke akun!');
-    setTimeout(() => {
-      setSuccessMessage('');
-      onClose();
-    }, 1200);
+      if (res.ok && data.success && data.user) {
+        onLogin(data.user);
+        setSuccessMessage('Berhasil masuk ke akun!');
+        setTimeout(() => {
+          setSuccessMessage('');
+          onClose();
+        }, 1200);
+        return;
+      }
+
+      if (data.notRegistered || res.status === 404) {
+        setRegEmail(emailVal);
+        setAuthMode('register');
+        setErrorMessage(
+          'Akun ini belum terdaftar. Silakan isi formulir daftar (asal pemohon / masyarakat & nomor WhatsApp) terlebih dahulu.'
+        );
+        return;
+      }
+
+      setErrorMessage(data.error || 'Email atau kata sandi tidak sesuai.');
+    } catch {
+      const existingUsers = adminStorage.getUsers() || [];
+      const found = existingUsers.find((u) => (u.email || '').toLowerCase() === emailVal);
+      if (found) {
+        onLogin({
+          id: found.id,
+          name: found.name,
+          email: found.email,
+          identifier: found.email,
+          category: found.role || 'Masyarakat Umum',
+          phone: found.phone,
+          org: found.org || 'Masyarakat Umum (Personal)',
+          loginAt: new Date().toLocaleString('id-ID')
+        });
+        setSuccessMessage('Berhasil masuk ke akun!');
+        setTimeout(() => {
+          setSuccessMessage('');
+          onClose();
+        }, 1200);
+      } else {
+        setRegEmail(emailVal);
+        setAuthMode('register');
+        setErrorMessage(
+          'Akun ini belum terdaftar. Silakan isi formulir daftar (asal pemohon / masyarakat & nomor WhatsApp) terlebih dahulu.'
+        );
+      }
+    }
   };
-
-  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
-  const [googleAuthMode, setGoogleAuthMode] = useState('login');
 
   const handleGoogleAuth = async (mode = 'login') => {
     setGoogleAuthMode(mode);
+    setPendingGoogleProfile(null);
     setErrorMessage('');
 
     const res = await triggerGoogleAuthFlow({
@@ -107,6 +147,10 @@ export const AuthModal = ({
           onClose();
         }, 1200);
       },
+      onNeedsRegistration: (profile) => {
+        setPendingGoogleProfile(profile);
+        setIsGoogleModalOpen(true);
+      },
       onUserError: (err) => {
         setErrorMessage(err);
       }
@@ -117,12 +161,18 @@ export const AuthModal = ({
     }
   };
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
     if (!regName.trim() || !regEmail.trim() || !regPhone.trim() || !regPassword.trim()) {
       setErrorMessage('Harap isi semua kolom wajib pendaftaran.');
+      return;
+    }
+
+    const cleanPhone = regPhone.replace(/[^0-9+]/g, '');
+    if (cleanPhone.length < 9) {
+      setErrorMessage('Mohon masukkan nomor WhatsApp aktif yang valid (minimal 9 digit angka).');
       return;
     }
 
@@ -150,32 +200,55 @@ export const AuthModal = ({
     }
 
     const userOrg = regOrg.trim() || (isMasyarakatUmum ? 'Masyarakat Umum (Personal)' : regCategory);
+    const userId = `usr-${Date.now()}`;
 
     const newUser = {
+      id: userId,
       name: regName.trim(),
-      email: regEmail.trim(),
-      identifier: regEmail.trim(),
+      email: regEmail.trim().toLowerCase(),
+      identifier: regEmail.trim().toLowerCase(),
       category: regCategory,
       org: userOrg,
       phone: regPhone.trim(),
+      authProvider: 'local',
       loginAt: new Date().toLocaleString('id-ID')
     };
 
-    // Sinkronisasi data ke penyimpanan admin agar divisi sarpras langsung mengetahui jenis peminjam
     try {
-      const existingUsers = adminStorage.getUsers();
-      const newAdminEntry = {
-        id: `usr-${Date.now()}`,
+      await neonApi.saveUser({
+        id: userId,
         name: newUser.name,
         email: newUser.email,
         phone: newUser.phone,
         role: newUser.category,
         org: newUser.org,
         status: 'Aktif',
-        joinedDate: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+        password: regPassword
+      });
+    } catch (err) {
+      console.warn('Neon save user warning:', err);
+    }
+
+    // Sinkronisasi data ke penyimpanan admin agar divisi sarpras langsung mengetahui jenis peminjam
+    try {
+      const existingUsers = adminStorage.getUsers();
+      const filtered = existingUsers.filter((u) => u.email !== newUser.email);
+      const newAdminEntry = {
+        id: userId,
+        name: newUser.name,
+        email: newUser.email,
+        phone: newUser.phone,
+        role: newUser.category,
+        org: newUser.org,
+        status: 'Aktif',
+        joinedDate: new Date().toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        }),
         totalBookings: 0
       };
-      adminStorage.saveUsers([newAdminEntry, ...existingUsers]);
+      adminStorage.saveUsers([newAdminEntry, ...filtered]);
     } catch (err) {
       console.warn('Sync admin user error:', err);
     }
@@ -691,8 +764,12 @@ export const AuthModal = ({
       {/* Modal Google Auth Terhubung Neon PostgreSQL */}
       <GoogleAuthModal
         isOpen={isGoogleModalOpen}
-        onClose={() => setIsGoogleModalOpen(false)}
+        onClose={() => {
+          setIsGoogleModalOpen(false);
+          setPendingGoogleProfile(null);
+        }}
         mode={googleAuthMode}
+        initialPendingProfile={pendingGoogleProfile}
         onUserSuccess={(user) => {
           onLogin(user);
           setSuccessMessage(

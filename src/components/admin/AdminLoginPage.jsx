@@ -9,7 +9,8 @@ import {
   AlertCircle, 
   CheckCircle2,
   Sparkles,
-  KeyRound
+  KeyRound,
+  User
 } from 'lucide-react';
 
 export const AdminLoginPage = ({ onLoginSuccess, onBackToSite }) => {
@@ -19,63 +20,58 @@ export const AdminLoginPage = ({ onLoginSuccess, onBackToSite }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!email.trim() || !password.trim()) {
-      setErrorMsg('Mohon masukkan email admin dan kata sandi.');
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (!cleanEmail || !cleanPassword) {
+      setErrorMsg('Mohon masukkan akun administrator dan kata sandi.');
       return;
     }
 
     setLoading(true);
 
-    setTimeout(() => {
-      // Validasi kredensial (admin demo atau kredensial BPA)
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setErrorMsg(data.error || 'Akun atau kata sandi administrator salah.');
+        setLoading(false);
+        return;
+      }
+
+      onLoginSuccess(data.user);
+    } catch (err) {
+      console.error('Koneksi ke server admin login error:', err);
+      // Fallback lokal jika offline
       if (
-        (email.toLowerCase().includes('admin') || email.toLowerCase().includes('bpa')) &&
-        (password === 'adminbpa2026' || password === 'admin' || password === 'admin123')
+        (cleanEmail === 'adminbpakmuii@gmail.com' || cleanEmail === 'adminbpakmuii' || cleanEmail.includes('admin')) &&
+        (cleanPassword === 'bpakmuii' || cleanPassword === 'adminbpa2026')
       ) {
-        const adminUser = {
-          name: 'Irfan Ardiansyah',
+        const fallbackAdmin = {
+          id: 'admin-bpa-01',
+          name: 'Administrator Utama BPA KM UII',
           role: 'Administrator Utama',
-          email: email.trim(),
+          email: 'adminbpakmuii@gmail.com',
           division: 'Presiden Direktur BPA KM UII',
           loginTime: new Date().toLocaleString('id-ID')
         };
-        onLoginSuccess(adminUser);
+        onLoginSuccess(fallbackAdmin);
       } else {
-        // Fallback untuk kemudahan pengujian jika kredensial bebas dimasukkan
-        const adminUser = {
-          name: email.split('@')[0] || 'Staff Admin BPA',
-          role: 'Administrator Portal',
-          email: email.trim(),
-          division: 'Biro Pengelolaan Aset UII',
-          loginTime: new Date().toLocaleString('id-ID')
-        };
-        onLoginSuccess(adminUser);
+        setErrorMsg('Gagal terhubung ke database. Pastikan koneksi internet & server aktif.');
       }
+    } finally {
       setLoading(false);
-    }, 400);
-  };
-
-  const handleQuickDemoLogin = () => {
-    setEmail('admin@bpa.uii.ac.id');
-    setPassword('adminbpa2026');
-    setLoading(true);
-
-    setTimeout(() => {
-      const demoAdmin = {
-        name: 'Irfan Ardiansyah',
-        role: 'Administrator Utama BPA',
-        email: 'admin@bpa.uii.ac.id',
-        division: 'Presiden Direktur BPA KM UII',
-        avatar: '/images/INVESTOR/Irfan-ArdiansyahArdiansyah.webp',
-        loginTime: new Date().toLocaleString('id-ID')
-      };
-      onLoginSuccess(demoAdmin);
-      setLoading(false);
-    }, 300);
+    }
   };
 
   return (
@@ -104,13 +100,19 @@ export const AdminLoginPage = ({ onLoginSuccess, onBackToSite }) => {
       {/* Main Container Card */}
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-slate-800">
         
-        {/* Header Biru UII dengan Logo Resmi */}
+        {/* Header Biru UII dengan Logo Resmi (Tanpa Card Putih) */}
         <div className="bg-[#0c1f38] px-7 py-7 text-center relative border-b-2 border-uii-gold/30">
-          <div className="w-16 h-16 mx-auto mb-3 bg-white p-2 rounded-2xl shadow-lg border border-white/20 flex items-center justify-center">
+          <div className="w-20 h-20 mx-auto mb-2 flex items-center justify-center">
             <img
-              src="/images/logo/logo.png"
+              src="/images/logo/Logo-BPA-KM-UII-removebg.png"
               alt="Logo BPA KM UII"
-              className="h-12 w-auto object-contain"
+              className="h-full w-full object-contain filter drop-shadow-md"
+              onError={(e) => {
+                if (!e.currentTarget.dataset.retried) {
+                  e.currentTarget.dataset.retried = 'true';
+                  e.currentTarget.src = '/images/logo/logo.png';
+                }
+              }}
             />
           </div>
           <h2 className="text-xl font-black text-white font-heading tracking-wide">
@@ -136,15 +138,16 @@ export const AdminLoginPage = ({ onLoginSuccess, onBackToSite }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Email / Akun Staf:
+                Akun / ID Administrator:
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@bpa.uii.ac.id"
+                  placeholder="ID Akun atau Email Administrator..."
+                  autoComplete="username"
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-uii-blue-900 focus:bg-white"
                 />
               </div>
@@ -182,30 +185,6 @@ export const AdminLoginPage = ({ onLoginSuccess, onBackToSite }) => {
               <span>{loading ? 'Memverifikasi...' : 'Masuk ke Dashboard'}</span>
             </button>
           </form>
-
-          {/* Opsi Login Cepat Demo Admin */}
-          <div className="pt-2">
-            <div className="relative my-3 flex items-center justify-center">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
-              </div>
-              <div className="relative bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Akses Cepat Pengujian
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              className="w-full py-3 px-4 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-300 text-amber-950 font-extrabold text-xs transition-all shadow-xs flex items-center justify-center space-x-2 group"
-            >
-              <ShieldCheck className="w-4 h-4 text-amber-700 group-hover:scale-110 transition-transform" />
-              <span>Masuk sebagai Admin Demo BPA</span>
-            </button>
-            <p className="text-[10px] text-slate-400 text-center mt-2">
-              Kredensial Demo: <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">admin@bpa.uii.ac.id</code> / <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">adminbpa2026</code>
-            </p>
-          </div>
         </div>
 
         {/* Footer Card */}

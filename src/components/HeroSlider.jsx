@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { siteData } from '../data/siteData';
+import { ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { adminStorage } from '../utils/adminStorage';
 
 // Silky smooth cinematic easing (tidak goyang / tidak memantul)
@@ -43,42 +42,68 @@ const swipePower = (offset, velocity) => {
 export const HeroSlider = () => {
   const [[page, direction], setPage] = useState([0, 0]);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [slides] = useState(() => {
-    try {
-      const b = adminStorage.getBanners();
-      return b && b.length > 0 ? b : siteData.heroSlides;
-    } catch {
-      return siteData.heroSlides;
-    }
-  });
+  const [slides, setSlides] = useState(() => adminStorage.getBanners());
   const timerRef = useRef(null);
 
+  useEffect(() => {
+    const syncBanners = () => {
+      setSlides(adminStorage.getBanners());
+      setPage([0, 0]);
+    };
+    window.addEventListener('bpa-data-updated', syncBanners);
+    window.addEventListener('storage', syncBanners);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncBanners);
+      window.removeEventListener('storage', syncBanners);
+    };
+  }, []);
+
+  const hasSlides = slides.length > 0;
   // Modulo index agar selalu berada dalam range 0 s/d slides.length - 1
-  const slideIndex = ((page % slides.length) + slides.length) % slides.length;
+  const slideIndex = hasSlides ? ((page % slides.length) + slides.length) % slides.length : 0;
 
   const paginate = (newDirection) => {
+    if (slides.length <= 1) return;
     setPage([page + newDirection, newDirection]);
   };
 
   const jumpToSlide = (targetIndex) => {
-    if (targetIndex === slideIndex) return;
+    if (targetIndex === slideIndex || slides.length <= 1) return;
     const newDirection = targetIndex > slideIndex ? 1 : -1;
     setPage([page + (targetIndex - slideIndex), newDirection]);
   };
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || slides.length <= 1) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
     timerRef.current = setInterval(() => {
-      paginate(1);
+      setPage(([curr]) => [curr + 1, 1]);
     }, 6000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, page]);
+  }, [isPlaying, page, slides.length]);
+
+  if (!hasSlides) {
+    return (
+      <section className="relative w-full h-screen min-h-[100vh] bg-gradient-to-br from-uii-blue-950 via-uii-blue-900 to-slate-900 overflow-hidden select-none flex items-center justify-center px-6">
+        <div className="max-w-xl text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center mx-auto text-uii-gold">
+            <ImageIcon className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-heading">
+            Badan Pengelola Aset KM UII
+          </h1>
+          <p className="text-sm sm:text-base text-blue-100/80 leading-relaxed">
+            Belum ada banner utama yang dipublikasikan. Admin dapat menambahkan banner melalui Dashboard Admin → CMS Website.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   const currentSlide = slides[slideIndex];
 

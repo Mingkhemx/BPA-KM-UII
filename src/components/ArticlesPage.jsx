@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Home, 
   Search, 
@@ -13,136 +13,28 @@ import {
   Filter
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { adminStorage } from '../utils/adminStorage';
 
 export const ArticlesPage = ({ onBackHome, onOpenArticle }) => {
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
+  const [articles, setArticles] = useState(() => adminStorage.getArticles());
 
-  // Koleksi Artikel & Berita Resmi BPA KM UII
-  const articles = useMemo(() => [
-    {
-      id: 'art-1',
-      title: 'Corporate Social Responsibility (CSR) BPA KM UII: Berkah Tumbuh Bersama Kita',
-      category: 'CSR & Sosial',
-      date: '15 Desember 2024',
-      author: 'Humas BPA KM UII',
-      readTime: '3 menit baca',
-      image: '/images/artikel/csr-berkah.png',
-      featured: true,
-      excerpt: 'Program Corporate Social Responsibility (CSR) Badan Pengelola Aset KM UII bertajuk "Berkah Tumbuh Bersama Kita" kembali diselenggarakan sebagai wujud kepedulian nyata terhadap warga sekitar kampus UII.',
-      content: `Program Corporate Social Responsibility (CSR) Badan Pengelola Aset KM UII bertajuk "Berkah Tumbuh Bersama Kita" kembali diselenggarakan sebagai wujud kepedulian nyata terhadap warga sekitar kampus UII.
+  useEffect(() => {
+    const syncArticles = () => setArticles(adminStorage.getArticles());
+    window.addEventListener('bpa-data-updated', syncArticles);
+    window.addEventListener('storage', syncArticles);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncArticles);
+      window.removeEventListener('storage', syncArticles);
+    };
+  }, []);
 
-Melalui kegiatan ini, fungsionaris BPA KM UII menyalurkan puluhan paket bahan pangan pokok dan bingkisan berkah kepada masyarakat yang membutuhkan di sekitar lingkungan kampus terpadu Universitas Islam Indonesia. Selain sebagai agenda rutin pengabdian masyarakat, kegiatan ini bertujuan mempererat tali silaturahmi antara civitas akademika keluarga mahasiswa dengan warga lokal.
-
-Presiden Direktur BPA KM UII menyampaikan bahwa kepedulian sosial merupakan salah satu pilar nilai yang dipegang teguh oleh lembaga. Melalui pengelolaan aset kemahasiswaan yang berdaya guna, BPA KM UII berkomitmen terus memberikan dampak kebermanfaatan nyata bagi kemaslahatan umat.`
-    },
-    {
-      id: 'art-2',
-      title: 'Training Kelembagaan BPA KM UII 2024: Penguatan Sinergi & Tata Kelola Aset',
-      category: 'Organisasi & Pelatihan',
-      date: '23 November 2024',
-      author: 'Divisi PSDM BPA KM UII',
-      readTime: '4 menit baca',
-      image: '/images/artikel/training-kelembagaan.jpg',
-      excerpt: 'Seluruh fungsionaris BPA KM UII mengikuti agenda intensif Training Kelembagaan guna mengasah kompetensi kepemimpinan, akuntansi, dan operasional fasilitas kampus.',
-      content: `Dalam rangka memperkuat kapasitas internal kepengurusan, seluruh fungsionaris Badan Pengelola Aset KM UII mengikuti agenda intensif Training Kelembagaan BPA KM UII 2024.
-
-Pelatihan ini mencakup berbagai materi esensial, mulai dari manajemen operasional sarana kampus, akuntansi dan audit keuangan organisasi, standar pelayanan prima untuk penyewaan gedung SCC, hingga mitigasi risiko pemeliharaan perangkat audio dan komunikasi.
-
-Kegiatan ini diharapkan mampu mencetak fungsionaris yang profesional, tangguh, dan akuntabel dalam menjalankan amanah pengelolaan aset milik seluruh mahasiswa Universitas Islam Indonesia.`
-    },
-    {
-      id: 'art-3',
-      title: 'Pembukaan Program Magang BPA KM UII Periode 2024/2025',
-      category: 'Rekrutmen & Magang',
-      date: '10 November 2024',
-      author: 'Divisi PSDM BPA KM UII',
-      readTime: '3 menit baca',
-      image: '/images/artikel/program-magang.png',
-      excerpt: 'BPA KM UII resmi membuka pendaftaran Program Magang bagi mahasiswa aktif UII yang ingin belajar manajemen event, akuntansi logistik, dan pengelolaan sarana kampus.',
-      content: `Badan Pengelola Aset KM UII kembali membuka kesempatan emas bagi seluruh mahasiswa aktif Universitas Islam Indonesia melalui pembukaan Program Magang BPA KM UII periode 2024/2025.
-
-Program ini menawarkan pengalaman berharga di berbagai divisi strategis, antara lain:
-1. Administrasi & Keuangan (ADKEU)
-2. Pengembangan Usaha Strategis (PUS)
-3. Publikasi & Desain Promosi (PDP)
-4. Pengelolaan Sarana Prasarana (PSP)
-5. Pengembangan Sumber Daya Manusia (PSDM)
-
-Peserta magang akan memperoleh pembinaan langsung dari manajer divisi, sertifikat resmi institusional, relasi kepemimpinan kampus, serta pengalaman nyata dalam mengelola fasilitas gedung berskala besar seperti Student Convention Center (SCC).`
-    },
-    {
-      id: 'art-4',
-      title: 'Pengadaan Booth Fitting Jas Almamater UII Secara Offline di Hall SCC',
-      category: 'Layanan Mahasiswa',
-      date: '18 September 2024',
-      author: 'Divisi PUS BPA KM UII',
-      readTime: '3 menit baca',
-      image: '/images/artikel/fitting-almamater.png',
-      excerpt: 'Fasilitasi fitting dan penukaran ukuran jas almamater resmi mahasiswa baru Universitas Islam Indonesia diselenggarakan secara tertib dan terjadwal di SCC.',
-      content: `Guna memastikan kenyamanan dan kesesuaian atribut resmi mahasiswa baru Universitas Islam Indonesia, Badan Pengelola Aset KM UII menyelenggarakan layanan Booth Fitting Jas Almamater secara offline di Hall Student Convention Center (SCC).
-
-Dalam layanan ini, mahasiswa baru dapat mencoba langsung berbagai ukuran jas almamater resmi (S, M, L, XL, hingga ukuran khusus) dengan bantuan staf logistik BPA. Sistem antrean digital dan pembagian sesi diterapkan untuk menjamin alur pelayanan berjalan tertib, cepat, dan nyaman.
-
-Layanan ini merupakan bentuk komitmen BPA KM UII dalam memberikan pelayanan logistik kemahasiswaan yang prima, transparan, dan terstandarisasi.`
-    },
-    {
-      id: 'art-5',
-      title: 'Menelusuri Sejarah Gedung Student Convention Center (SCC UII)',
-      category: 'Fasilitas & Sejarah',
-      date: '12 September 2024',
-      author: 'Tim Riset Sejarah BPA',
-      readTime: '5 menit baca',
-      image: '/images/artikel/sejarah-scc.png',
-      excerpt: 'Rekam jejak berdirinya Student Convention Center (SCC) UII yang bermula dari Tim Kerja Pengelola Aset tahun 2014 hingga kini bertransformasi menjadi pusat kegiatan akbar mahasiswa.',
-      content: `Gedung Student Convention Center (SCC) Universitas Islam Indonesia memiliki sejarah panjang yang lekat dengan denyut perjuangan kelembagaan mahasiswa.
-
-Berawal pada tahun 2014 dengan dibentuknya Tim Kerja Pengelola Aset SCC UII, pengelolaan sarana ini terus berkembang hingga bertransformasi menjadi Badan Pengelola Aset (BPA) KM UII yang berbadan otonom dan profesional di bawah naungan Keluarga Mahasiswa UII.
-
-Gedung yang memiliki daya tampung hingga 1.500 orang ini telah menjadi saksi bisu berbagai peristiwa bersejarah: wisuda universitas, seminar internasional, pentas seni budaya mahasiswa, hingga musyawarah kelembagaan. Penelusuran sejarah ini didokumentasikan sebagai bentuk dedikasi menjaga marwah dan kesinambungan aset kemahasiswaan bagi generasi mendatang.`
-    },
-    {
-      id: 'art-6',
-      title: 'Kolaborasi Inovatif: Sharing Session BPA KM UII Bersama Institut Pertanian Yogyakarta',
-      category: 'Sinergi & Kemitraan',
-      date: '20 Juni 2024',
-      author: 'Humas BPA KM UII',
-      readTime: '4 menit baca',
-      image: '/images/artikel/sharing-instiper.png',
-      excerpt: 'Sesi pertukaran wawasan dan studi banding tata kelola fasilitas kemahasiswaan antara perwakilan BPA KM UII dan Institut Pertanian Yogyakarta (INSTIPER).',
-      content: `Sebagai wujud keterbukaan dan semangat kolaborasi antarkampus, Badan Pengelola Aset KM UII menerima kunjungan serta menyelenggarakan sharing session bersama delegasi kelembagaan mahasiswa Institut Pertanian Yogyakarta (INSTIPER).
-
-Pertemuan ini membahas berbagai topik krusial mengenai digitalisasi reservasi fasilitas kampus, model bisnis kewirausahaan berbasis aset mahasiswa, pemeliharaan berkelanjutan perangkat audio panggung, serta pengelolaan inventaris tenda dan perlengkapan event.
-
-Kegiatan ini diharapkan menjadi jembatan sinergi yang produktif dalam memperkuat jejaring kelembagaan mahasiswa di Daerah Istimewa Yogyakarta.`
-    },
-    {
-      id: 'art-7',
-      title: 'CSR Ramadhan BPA KM UII 2024: Pengajian Akbar dan Buka Puasa Bersama',
-      category: 'CSR & Sosial',
-      date: '28 Maret 2024',
-      author: 'Humas BPA KM UII',
-      readTime: '3 menit baca',
-      image: '/images/artikel/ramadhan-berbagi.png',
-      excerpt: 'Rangkaian silaturahmi keagamaan, pengajian penuh hikmah, dan buka puasa bersama fungsionaris serta anak yatim di bulan suci Ramadhan 1445 H.',
-      content: `Menyemarakkan bulan suci Ramadhan 1445 H, Badan Pengelola Aset KM UII menggelar program CSR Ramadhan Berbagi yang diisi dengan pengajian akbar, santunan anak yatim, dan buka puasa bersama di lingkungan SCC UII.
-
-Acara yang berlangsung khidmat ini dihadiri oleh jajaran pengurus, pembina, serta perwakilan lembaga kemahasiswaan tingkat universitas dan fakultas di UII.
-
-Melalui program ini, BPA KM UII berikhtiar memupuk nilai-nilai religiusitas Islam, keikhlasan berkhidmat, dan kepedulian sosial di kalangan mahasiswa.`
-    }
-  ], []);
-
-  // Filter Categories
-  const categories = [
-    'Semua',
-    'CSR & Sosial',
-    'Organisasi & Pelatihan',
-    'Layanan Mahasiswa',
-    'Fasilitas & Sejarah',
-    'Sinergi & Kemitraan',
-    'Rekrutmen & Magang'
-  ];
+  // Filter Categories dinamis dari artikel yang tersedia
+  const categories = useMemo(() => {
+    const unique = Array.from(new Set(articles.map((a) => a.category).filter(Boolean)));
+    return ['Semua', ...unique];
+  }, [articles]);
 
   // Filter Logic
   const filteredArticles = useMemo(() => {
@@ -150,10 +42,10 @@ Melalui program ini, BPA KM UII berikhtiar memupuk nilai-nilai religiusitas Isla
       const matchCat = selectedCategory === 'Semua' || art.category === selectedCategory;
       const q = searchQuery.toLowerCase().trim();
       const matchQuery = !q || 
-        art.title.toLowerCase().includes(q) || 
-        art.excerpt.toLowerCase().includes(q) || 
-        art.author.toLowerCase().includes(q) ||
-        art.category.toLowerCase().includes(q);
+        (art.title || '').toLowerCase().includes(q) || 
+        (art.excerpt || '').toLowerCase().includes(q) || 
+        (art.author || '').toLowerCase().includes(q) ||
+        (art.category || '').toLowerCase().includes(q);
       return matchCat && matchQuery;
     });
   }, [articles, selectedCategory, searchQuery]);
@@ -325,6 +217,12 @@ Melalui program ini, BPA KM UII berikhtiar memupuk nilai-nilai religiusitas Isla
                 </div>
               </article>
             ))}
+          </div>
+        ) : articles.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+            <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-700 font-bold">Belum ada artikel yang dipublikasikan.</p>
+            <p className="text-xs text-slate-500 mt-1">Artikel dan berita resmi akan tampil setelah ditambahkan oleh admin.</p>
           </div>
         ) : (
           <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">

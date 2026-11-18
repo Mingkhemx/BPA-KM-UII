@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Navbar } from './components/Navbar';
 import { HeroSlider } from './components/HeroSlider';
 import { DeanGreetingSection } from './components/DeanGreetingSection';
@@ -20,15 +20,17 @@ import { RentalCartDrawer } from './components/RentalCartDrawer';
 import { ApprovalNotificationModal } from './components/ApprovalNotificationModal';
 import { AuthRequiredModal } from './components/AuthRequiredModal';
 import { AuthPage } from './components/AuthPage';
+import { ProfilePage } from './components/ProfilePage';
 import { DetailModal } from './components/DetailModal';
 import { SearchModal } from './components/SearchModal';
 import { Footer } from './components/Footer';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLoginPage } from './components/admin/AdminLoginPage';
+import { StaffLoginPage, StaffPortalDashboard } from './components/admin/StaffPortal';
 import { adminStorage } from './utils/adminStorage';
+import { neonApi } from './services/neonDb';
 import { X, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { OFFICIAL_PRODUCTS, getProductById } from './data/officialProducts';
 import { registerNewBookingToTracking } from './data/trackingData';
 
 export function App() {
@@ -41,7 +43,7 @@ export function App() {
     }
   }); // 'home' | 'products' | 'sewa' | 'product-detail' | 'auth'
   const [selectedItem, setSelectedItem] = useState(null);
-  const [selectedProductForDetail, setSelectedProductForDetail] = useState(() => OFFICIAL_PRODUCTS[0]);
+  const [selectedProductForDetail, setSelectedProductForDetail] = useState(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -50,6 +52,7 @@ export function App() {
   const [authRequiredContext, setAuthRequiredContext] = useState('');
   const [authPageInitialMode, setAuthPageInitialMode] = useState('login');
   const [trackingBookingCode, setTrackingBookingCode] = useState('');
+  const [trackingResetKey, setTrackingResetKey] = useState(0);
 
   // Routing Akses Khusus Admin Dashboard (/admin atau ?page=admin atau #admin)
   const [isAdminRoute, setIsAdminRoute] = useState(() => {
@@ -63,7 +66,41 @@ export function App() {
     }
   });
 
+  // Routing Akses Khusus Panel Staf & Approval (/staff, /approval, /operasional)
+  const checkStaffUrl = () => {
+    try {
+      const path = window.location.pathname.toLowerCase();
+      const p = new URLSearchParams(window.location.search).get('page');
+      const hash = window.location.hash.toLowerCase();
+      return (
+        path === '/staff' ||
+        path.startsWith('/staff') ||
+        path === '/approval' ||
+        path.startsWith('/approval') ||
+        path === '/operasional' ||
+        path.startsWith('/operasional') ||
+        p === 'staff' ||
+        p === 'approval' ||
+        p === 'operasional' ||
+        hash === '#staff' ||
+        hash === '#approval'
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const [isStaffRoute, setIsStaffRoute] = useState(checkStaffUrl);
+
   const [adminUser, setAdminUser] = useState(() => adminStorage.getAdminAuth());
+  const [staffUser, setStaffUser] = useState(() => {
+    try {
+      const s = localStorage.getItem('bpa_staff_session');
+      return s ? JSON.parse(s) : null;
+    } catch {
+      return null;
+    }
+  });
 
   React.useEffect(() => {
     const handleUrlChange = () => {
@@ -76,6 +113,7 @@ export function App() {
         } else {
           setIsAdminRoute(false);
         }
+        setIsStaffRoute(checkStaffUrl());
       } catch {}
     };
 
@@ -108,6 +146,11 @@ export function App() {
 
   const handleNavigateToAuth = (mode = 'login') => {
     setIsCartOpen(false);
+    if (currentUser) {
+      setCurrentPage('profile');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setAuthPageInitialMode(mode);
     setCurrentPage('auth');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -118,6 +161,17 @@ export function App() {
     try {
       localStorage.setItem('bpa_auth_user', JSON.stringify(userData));
     } catch {}
+    if (currentPage === 'auth') {
+      setCurrentPage('profile');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleUpdateUser = (updatedData) => {
+    setCurrentUser(updatedData);
+    try {
+      localStorage.setItem('bpa_auth_user', JSON.stringify(updatedData));
+    } catch {}
   };
 
   const handleLogoutUser = () => {
@@ -125,13 +179,25 @@ export function App() {
     try {
       localStorage.removeItem('bpa_auth_user');
     } catch {}
+    if (currentPage === 'profile') {
+      setCurrentPage('auth');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // Status Pengajuan Terakhir (Menunggu Persetujuan Staf)
   const [activeBooking, setActiveBooking] = useState(() => {
     try {
       const saved = localStorage.getItem('bpa_latest_booking');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      const all = adminStorage.getBookings() || [];
+      const exists = all.some(b => b?.bookingCode === parsed?.bookingCode);
+      if (!exists) {
+        localStorage.removeItem('bpa_latest_booking');
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -147,13 +213,111 @@ export function App() {
     }
   });
 
-  // Handler Pengajuan Sewa (Masuk ke Proses Approval Staf & Database Tracking)
+  // Sinkronkan status user & active booking secara live saat data berubah/dibersihkan
+  useEffect(() => {
+    const handleSyncUserAndBooking = () => {
+      // 1. Sync User
+      try {
+        const savedUser = localStorage.getItem('bpa_auth_user');
+        if (!savedUser) {
+          setCurrentUser(null);
+        } else {
+          const parsed = JSON.parse(savedUser);
+          setCurrentUser(parsed);
+        }
+      } catch {
+        setCurrentUser(null);
+      }
+
+      // 2. Sync Active Booking
+      try {
+        const savedBooking = localStorage.getItem('bpa_latest_booking');
+        if (!savedBooking) {
+          setActiveBooking(null);
+        } else {
+          const parsed = JSON.parse(savedBooking);
+          const all = adminStorage.getBookings() || [];
+          const exists = all.some(b => b?.bookingCode === parsed?.bookingCode);
+          if (!exists) {
+            localStorage.removeItem('bpa_latest_booking');
+            setActiveBooking(null);
+          } else {
+            setActiveBooking(parsed);
+          }
+        }
+      } catch {
+        setActiveBooking(null);
+      }
+    };
+
+    window.addEventListener('bpa-data-updated', handleSyncUserAndBooking);
+    window.addEventListener('storage', handleSyncUserAndBooking);
+    return () => {
+      window.removeEventListener('bpa-data-updated', handleSyncUserAndBooking);
+      window.removeEventListener('storage', handleSyncUserAndBooking);
+    };
+  }, []);
+
+  // Trigger pembaruan reaktif saat data di storage diperbarui
+  const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    const handleBump = () => setDataVersion((v) => v + 1);
+    window.addEventListener('bpa-data-updated', handleBump);
+    window.addEventListener('storage', handleBump);
+    return () => {
+      window.removeEventListener('bpa-data-updated', handleBump);
+      window.removeEventListener('storage', handleBump);
+    };
+  }, []);
+
+  // Ambil daftar booking aktif milik user (yang masih dalam status proses berjalan)
+  const userActiveBookings = useMemo(() => {
+    const all = adminStorage.getBookings() || [];
+    const isPending = (b) => {
+      if (!b) return false;
+      const s = String(b.status || '').toUpperCase();
+      const pct = Number(b.progressPercent ?? 0);
+      return s !== 'SELESAI' && s !== 'DITOLAK' && pct < 100;
+    };
+
+    const userEmail = (currentUser?.email || '').toLowerCase().trim();
+    const userName = (currentUser?.name || '').toLowerCase().trim();
+
+    if (userEmail || userName) {
+      return all.filter((b) => {
+        if (!b?.bookingCode || !isPending(b)) return false;
+        const custEmail = (b.customer?.email || b.userEmail || '').toLowerCase().trim();
+        const custName = (b.customer?.name || b.userName || '').toLowerCase().trim();
+        if (userEmail && custEmail === userEmail) return true;
+        if (userName && custName === userName) return true;
+        return false;
+      });
+    }
+
+    if (activeBooking && isPending(activeBooking)) {
+      const exists = all.some((b) => b?.bookingCode === activeBooking.bookingCode);
+      if (exists) return [activeBooking];
+    }
+
+    return [];
+  }, [currentUser, activeBooking, dataVersion]);
+
+  // Handler Pengajuan Sewa (Masuk ke Proses Approval Staf & Database Tracking & Neon PostgreSQL)
   const handleSubmitBooking = (bookingData) => {
     setActiveBooking(bookingData);
-    setTrackingBookingCode(bookingData.bookingCode);
     try {
-      registerNewBookingToTracking(bookingData);
+      const trackingRecord = registerNewBookingToTracking(bookingData);
       localStorage.setItem('bpa_latest_booking', JSON.stringify(bookingData));
+
+      // Sinkronkan juga ke adminStorage dan Neon PostgreSQL
+      const existingBookings = adminStorage.getBookings() || [];
+      const filtered = existingBookings.filter((b) => b.bookingCode !== trackingRecord.bookingCode);
+      adminStorage.saveBookings([trackingRecord, ...filtered]);
+      neonApi.saveBooking({
+        ...trackingRecord,
+        userCategory: currentUser?.category || 'Mahasiswa Aktif UII'
+      }).catch(() => {});
     } catch {}
     setIsApprovalModalOpen(true);
     handleClearCart();
@@ -231,9 +395,20 @@ export function App() {
   // Navigasi ke Halaman Detail Produk Baru (Tanpa Overlay Modal)
   const handleOpenProductDetail = (prod) => {
     setIsCartOpen(false);
-    const full = getProductById(prod.slug || prod.id) || prod;
+    const catalog = adminStorage.getProducts();
+    const key = prod?.slug || prod?.id;
+    const full = catalog.find((p) => p.slug === key || String(p.id) === String(key)) || prod;
     setSelectedProductForDetail(full);
     setCurrentPage('product-detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNavigateToTracking = (code = '') => {
+    setTrackingBookingCode(code || '');
+    if (!code) {
+      setTrackingResetKey((k) => k + 1);
+    }
+    setCurrentPage('tracking');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -290,14 +465,24 @@ export function App() {
 
     // Navigasi ke halaman pelacakan progres persiapan sewa terpisah
     if (sectionId === 'tracking' || sectionId === 'lacak') {
-      setCurrentPage('tracking');
+      handleNavigateToTracking('');
+      return;
+    }
+
+    // Navigasi ke halaman profil khusus (jika sudah login) atau halaman login/register
+    if (sectionId === 'profile') {
+      setCurrentPage(currentUser ? 'profile' : 'auth');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
-    // Navigasi ke halaman login & register terpisah (New Page)
-    if (sectionId === 'auth' || sectionId === 'login' || sectionId === 'register' || sectionId === 'profile') {
-      setCurrentPage('auth');
+    if (sectionId === 'auth' || sectionId === 'login' || sectionId === 'register') {
+      if (currentUser) {
+        setCurrentPage('profile');
+      } else {
+        setAuthPageInitialMode(sectionId === 'register' ? 'register' : 'login');
+        setCurrentPage('auth');
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -352,6 +537,10 @@ export function App() {
       return (
         <AdminDashboard
           adminUser={adminUser}
+          onUpdateProfile={(updatedUser) => {
+            adminStorage.saveAdminAuth(updatedUser);
+            setAdminUser(updatedUser);
+          }}
           onLogout={() => {
             adminStorage.clearAdminAuth();
             setAdminUser(null);
@@ -375,6 +564,56 @@ export function App() {
           }}
           onBackToSite={() => {
             setIsAdminRoute(false);
+            setCurrentPage('home');
+            try {
+              window.history.pushState({}, '', '/');
+            } catch {}
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      );
+    }
+  }
+
+  // JIKA SEDANG DIAKSES LEWAT /staff, /approval, ATAU /operasional: TAMPILKAN PORTAL STAF & APPROVAL
+  if (isStaffRoute) {
+    if (staffUser) {
+      return (
+        <StaffPortalDashboard
+          staffUser={staffUser}
+          onUpdateProfile={(updatedUser) => {
+            try {
+              localStorage.setItem('bpa_staff_session', JSON.stringify(updatedUser));
+            } catch {}
+            setStaffUser(updatedUser);
+          }}
+          onLogout={() => {
+            try {
+              localStorage.removeItem('bpa_staff_session');
+            } catch {}
+            setStaffUser(null);
+          }}
+          onGoToSite={() => {
+            setIsStaffRoute(false);
+            setCurrentPage('home');
+            try {
+              window.history.pushState({}, '', '/');
+            } catch {}
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      );
+    } else {
+      return (
+        <StaffLoginPage
+          onLoginSuccess={(user) => {
+            try {
+              localStorage.setItem('bpa_staff_session', JSON.stringify(user));
+            } catch {}
+            setStaffUser(user);
+          }}
+          onBackToSite={() => {
+            setIsStaffRoute(false);
             setCurrentPage('home');
             try {
               window.history.pushState({}, '', '/');
@@ -488,11 +727,7 @@ export function App() {
               setActiveBooking(b);
               setIsApprovalModalOpen(true);
             }}
-            onNavigateTracking={(code) => {
-              if (code) setTrackingBookingCode(code);
-              setCurrentPage('tracking');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
+            onNavigateTracking={handleNavigateToTracking}
           />
         ) : currentPage === 'tracking' ? (
           /* Dedicated Live Tracking & Preparation Page (User & Staff Views) */
@@ -506,10 +741,29 @@ export function App() {
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             initialBookingCode={trackingBookingCode}
-            activeBooking={activeBooking}
+            resetKey={trackingResetKey}
           />
-        ) : currentPage === 'auth' ? (
-          /* Dedicated Login, Register & Profil Pengguna New Page */
+        ) : currentPage === 'profile' && currentUser ? (
+          /* Dedicated User Profile Page */
+          <ProfilePage
+            currentUser={currentUser}
+            onUpdateUser={handleUpdateUser}
+            onLogout={handleLogoutUser}
+            onBackHome={() => {
+              setCurrentPage('home');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onNavigateSewa={() => {
+              setCurrentPage('sewa');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onNavigateTracking={handleNavigateToTracking}
+            onOpenCart={() => setIsCartOpen(true)}
+            cartItems={cartItems}
+            activeBookings={userActiveBookings}
+          />
+        ) : currentPage === 'auth' || currentPage === 'profile' ? (
+          /* Dedicated Login & Register Page */
           <AuthPage
             onBackHome={() => {
               setCurrentPage('home');
@@ -519,9 +773,9 @@ export function App() {
               setCurrentPage('sewa');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            onNavigateTracking={(code) => {
-              if (code) setTrackingBookingCode(code);
-              setCurrentPage('tracking');
+            onNavigateTracking={handleNavigateToTracking}
+            onNavigateProfile={() => {
+              setCurrentPage('profile');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             currentUser={currentUser}
@@ -571,12 +825,8 @@ export function App() {
       <FloatingHub
         cartItems={cartItems}
         onOpenCart={() => setIsCartOpen(true)}
-        onNavigateTracking={(code) => {
-          if (code) setTrackingBookingCode(code);
-          setCurrentPage('tracking');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        activeBooking={activeBooking}
+        onNavigateTracking={handleNavigateToTracking}
+        activeBookings={userActiveBookings}
       />
 
       {/* Rental Cart Slide-Over Drawer */}
@@ -616,9 +866,7 @@ export function App() {
         booking={activeBooking}
         onNavigateTracking={(code) => {
           setIsApprovalModalOpen(false);
-          if (code) setTrackingBookingCode(code);
-          setCurrentPage('tracking');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          handleNavigateToTracking(code || '');
         }}
       />
 

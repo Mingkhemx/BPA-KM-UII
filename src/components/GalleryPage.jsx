@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Home, 
   Camera, 
@@ -15,220 +15,40 @@ import {
   Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { adminStorage } from '../utils/adminStorage';
 
 export const GalleryPage = ({ onBackHome }) => {
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'photo' | 'video'
   const [activeCategory, setActiveCategory] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [gallery, setGallery] = useState(() => adminStorage.getGallery());
 
-  // Data Foto Dokumentasi Resmi BPA KM UII
-  const photos = useMemo(() => [
-    {
-      id: 'p1',
-      title: 'CSR BPA KM UII: Berkah Tumbuh Bersama Kita',
-      category: 'Kegiatan & CSR',
-      date: 'Desember 2024',
-      image: '/images/gallery/csr-berkah.png',
-      description: 'Program bakti sosial dan CSR pembagian paket berkah bagi masyarakat sekitar kampus UII.'
-    },
-    {
-      id: 'p2',
-      title: 'Booth Fitting Almamater UII Ke-2',
-      category: 'Layanan & Kemitraan',
-      date: 'Desember 2024',
-      image: '/images/gallery/booth-fitting-2.png',
-      description: 'Pelaksanaan fitting dan distribusi jas almamater gelombang kedua untuk mahasiswa baru UII di SCC.'
-    },
-    {
-      id: 'p3',
-      title: 'BPA In Action: One Vision',
-      category: 'Organisasi',
-      date: 'Desember 2024',
-      image: '/images/gallery/bpa-in-action.png',
-      description: 'Upgrading dan team building fungsionaris BPA KM UII guna memperkuat sinergi organisasi dan kepemimpinan.'
-    },
-    {
-      id: 'p4',
-      title: 'Pemasangan Kaca Prasasti Gedung SCC UII',
-      category: 'Fasilitas & Gedung',
-      date: 'September 2024',
-      image: '/images/gallery/prasasti-scc.jpg',
-      description: 'Dokumentasi pemasangan prasasti peresmian dan pemeliharaan berkala Student Convention Center (SCC) KM UII.'
-    },
-    {
-      id: 'p5',
-      title: "Kegiatan CSR Ramadhan: Mengaji & Berbuka Bersama",
-      category: 'Kegiatan & CSR',
-      date: 'Ramadhan 2023',
-      image: '/images/gallery/csr-ramadhan-2023.jpg',
-      description: 'Rangkaian kegiatan sosial keagamaan Ramadhan bersama fungsionaris dan masyarakat sekitar kampus.'
-    },
-    {
-      id: 'p6',
-      title: 'Studi Banding BPA KM UII x BPA KM UGM',
-      category: 'Organisasi',
-      date: 'Kolaborasi Lembaga',
-      image: '/images/gallery/studi-banding-ugm.jpg',
-      description: 'Forum sharing dan pertukaran gagasan tata kelola aset kemahasiswaan antara BPA KM UII dan BPA KM UGM.'
-    },
-    {
-      id: 'p7',
-      title: 'Penyerahan Sertifikat Tim Penelusuran Sejarah SCC',
-      category: 'Organisasi',
-      date: 'September 2024',
-      image: '/images/gallery/penyerahan-sertifikat-scc.jpg',
-      description: 'Apresiasi dan penyerahan sertifikat penghargaan kepada tim penyusun sejarah pendirian gedung SCC UII.'
-    },
-    {
-      id: 'p8',
-      title: 'Sharing Bersama Institut Pertanian (INSTIPER) Yogyakarta',
-      category: 'Organisasi',
-      date: 'September 2024',
-      image: '/images/gallery/sharing-instiper.jpg',
-      description: 'Sesi diskusi kemitraan dan studi pengelolaan logistik kemahasiswaan bersama perwakilan INSTIPER.'
-    },
-    {
-      id: 'p9',
-      title: 'Kegiatan Fitting Offline Jas Almamater UII',
-      category: 'Layanan & Kemitraan',
-      date: 'September 2024',
-      image: '/images/gallery/fitting-almet.jpg',
-      description: 'Pelayanan langsung pengukuran dan pembagian jas almamater resmi mahasiswa UII di Hall SCC.'
-    },
-    {
-      id: 'p10',
-      title: 'Kegiatan CSR BPA KM UII: Ramadhan Berbagi Sembako',
-      category: 'Kegiatan & CSR',
-      date: 'Bakti Sosial',
-      image: '/images/gallery/csr-ramadhan-berbagi.jpg',
-      description: 'Penyaluran bingkisan sembako dan santunan berkah Ramadhan oleh Badan Pengelola Aset KM UII.'
-    },
-    {
-      id: 'p11',
-      title: 'Gedung Student Convention Center (SCC UII)',
-      category: 'Fasilitas & Gedung',
-      date: 'Fasilitas Utama',
-      image: '/images/asset-bpa/scc-uii.webp',
-      description: 'Tampak depan dan ruang aula serbaguna SCC berkapasitas 1.500 orang berstandar representatif.'
-    },
-    {
-      id: 'p12',
-      title: 'Paket Sound System & Speaker Aktif HTS P12E',
-      category: 'Fasilitas & Gedung',
-      date: 'Logistik Aset',
-      image: '/images/asset-bpa/sound-system.webp',
-      description: 'Sarana audio profesional berdaya tinggi lengkap dengan tripod kokoh dan mic wireless jernih.'
-    },
-    {
-      id: 'p13',
-      title: 'Perangkat Komunikasi Handie Talkie (HT) Dual Band',
-      category: 'Fasilitas & Gedung',
-      date: 'Logistik Aset',
-      image: '/images/asset-bpa/handie-talkie.webp',
-      description: 'HT Baofeng & Toriphone jangkauan luas untuk kelancaran koordinasi kepanitiaan acara.'
-    }
-  ], []);
+  useEffect(() => {
+    const syncGallery = () => setGallery(adminStorage.getGallery());
+    window.addEventListener('bpa-data-updated', syncGallery);
+    window.addEventListener('storage', syncGallery);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncGallery);
+      window.removeEventListener('storage', syncGallery);
+    };
+  }, []);
 
-  // Data Video Dokumentasi Resmi BPA KM UII
-  const videos = useMemo(() => [
-    {
-      id: 'v1',
-      title: 'Pelantikan Virtual Fungsionaris BPA KM UII 2022',
-      category: 'Pelantikan Organisasi',
-      youtubeId: 'xvbcBVoYb6w',
-      date: 'Dokumentasi 2022',
-      description: 'Upacara pelantikan fungsionaris Badan Pengelola Aset KM UII periode 2022 secara daring.'
-    },
-    {
-      id: 'v2',
-      title: 'Smart Millenials Talkshow',
-      category: 'Talkshow & Edukasi',
-      youtubeId: 'UX1bQK0nSko',
-      date: 'Talkshow Inspiratif',
-      description: 'Talkshow interaktif bersama pembicara muda bertajuk pengembangan kepemimpinan dan kewirausahaan.'
-    },
-    {
-      id: 'v3',
-      title: 'Pelantikan Fungsionaris BPA KM UII 2021',
-      category: 'Pelantikan Organisasi',
-      youtubeId: 'ION68fauhtU',
-      date: 'Dokumentasi 2021',
-      description: 'Momen pengukuhan amanah kepengurusan fungsionaris BPA KM UII periode 2021.'
-    },
-    {
-      id: 'v4',
-      title: 'Digital Branding Dalam Eksistensi Ekonomi Kreatif',
-      category: 'Seminar & Talkshow',
-      youtubeId: 'cfxG01c5Aa8',
-      date: 'Webinar Publik',
-      description: 'Seminar daring strategi branding digital untuk mengoptimalkan potensi industri kreatif kemahasiswaan.'
-    },
-    {
-      id: 'v5',
-      title: 'Unwanted Gift #ShortMovie',
-      category: 'Karya Kreatif & Sinema',
-      youtubeId: 'oTQSkegZirQ',
-      date: 'Karya Sinematik',
-      description: 'Film pendek karya divisi kreatif BPA KM UII yang mengisahkan makna dedikasi dan kejujuran.'
-    },
-    {
-      id: 'v6',
-      title: '[Eps 1] Wedding In Silent #WebSeries',
-      category: 'Web Series',
-      youtubeId: '0Nmh3s5nYXw',
-      date: 'Episode 1',
-      description: 'Episode perdana serial drama romansa dan dinamika kampus persembahan BPA KM UII.'
-    },
-    {
-      id: 'v7',
-      title: '[Eps 2] Wedding In Silent #WebSeries',
-      category: 'Web Series',
-      youtubeId: '5NZo-IDzZ_8',
-      date: 'Episode 2',
-      description: 'Kelanjutan konflik emosional dan penyelesaian rahasia dalam Episode ke-2 serial Wedding In Silent.'
-    },
-    {
-      id: 'v8',
-      title: '[Eps 3] Wedding In Silent #WebSeries',
-      category: 'Web Series',
-      youtubeId: 'VBF5j0Q7WmE',
-      date: 'Episode 3 (Final)',
-      description: 'Episode penutup klimaks yang sarat makna kebersamaan dalam serial Wedding In Silent.'
-    },
-    {
-      id: 'v9',
-      title: 'Trailer Wedding In Silent',
-      category: 'Trailer & Teaser',
-      youtubeId: 'k76SWgBtVo4',
-      date: 'Official Trailer',
-      description: 'Cuplikan cuplikan teaser resmi karya serial web series produksi BPA KM UII.'
-    },
-    {
-      id: 'v10',
-      title: 'Video Profil Gedung SCC & Fasilitas BPA KM UII',
-      category: 'Profil Fasilitas',
-      youtubeId: 'zTBIOO68F8I',
-      date: 'Official Tour',
-      description: 'Tur keliling fasilitas gedung Student Convention Center dan sarana prasarana resmi kampus UII.'
-    }
-  ], []);
+  const photos = useMemo(() => Array.isArray(gallery?.photos) ? gallery.photos : [], [gallery]);
+  const videos = useMemo(() => Array.isArray(gallery?.videos) ? gallery.videos : [], [gallery]);
 
-  // Filter Categories
-  const categories = [
-    'Semua',
-    'Kegiatan & CSR',
-    'Fasilitas & Gedung',
-    'Organisasi',
-    'Layanan & Kemitraan'
-  ];
+  // Filter Categories dinamis dari foto yang tersedia
+  const categories = useMemo(() => {
+    const unique = Array.from(new Set(photos.map((p) => p.category).filter(Boolean)));
+    return ['Semua', ...unique];
+  }, [photos]);
 
   // Filtered Photos
   const filteredPhotos = useMemo(() => {
     return photos.filter((p) => {
       const matchCat = activeCategory === 'Semua' || p.category === activeCategory;
       const q = searchQuery.toLowerCase().trim();
-      const matchQuery = !q || p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
+      const matchQuery = !q || (p.title || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q);
       return matchCat && matchQuery;
     });
   }, [photos, activeCategory, searchQuery]);
@@ -237,7 +57,7 @@ export const GalleryPage = ({ onBackHome }) => {
   const filteredVideos = useMemo(() => {
     return videos.filter((v) => {
       const q = searchQuery.toLowerCase().trim();
-      return !q || v.title.toLowerCase().includes(q) || v.description.toLowerCase().includes(q) || v.category.toLowerCase().includes(q);
+      return !q || (v.title || '').toLowerCase().includes(q) || (v.description || '').toLowerCase().includes(q) || (v.category || '').toLowerCase().includes(q);
     });
   }, [videos, searchQuery]);
 
@@ -502,6 +322,12 @@ export const GalleryPage = ({ onBackHome }) => {
                 </div>
               ))}
             </div>
+          ) : photos.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+              <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-700 font-bold">Belum ada foto dokumentasi.</p>
+              <p className="text-xs text-slate-500 mt-1">Foto dokumentasi akan tampil setelah ditambahkan oleh admin.</p>
+            </div>
           ) : (
             <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
               <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -589,6 +415,12 @@ export const GalleryPage = ({ onBackHome }) => {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+              <Film className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-700 font-bold">Belum ada video dokumentasi.</p>
+              <p className="text-xs text-slate-500 mt-1">Video dokumentasi akan tampil setelah ditambahkan oleh admin.</p>
             </div>
           ) : (
             <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">

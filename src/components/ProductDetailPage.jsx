@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft,
@@ -25,7 +25,8 @@ import {
   UserPlus,
   AlertCircle
 } from 'lucide-react';
-import { OFFICIAL_PRODUCTS, getProductById } from '../data/officialProducts';
+import { adminStorage } from '../utils/adminStorage';
+import { generateShortBookingCode } from '../data/trackingData';
 
 export const ProductDetailPage = ({
   product: initialProduct,
@@ -38,15 +39,28 @@ export const ProductDetailPage = ({
   onRequireAuth,
   onNavigateAuth
 }) => {
-  // Pastikan kita memiliki objek produk lengkap dari data resmi
+  const [allProducts, setAllProducts] = useState(() => adminStorage.getProducts());
+
+  useEffect(() => {
+    const syncProducts = () => setAllProducts(adminStorage.getProducts());
+    window.addEventListener('bpa-data-updated', syncProducts);
+    window.addEventListener('storage', syncProducts);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncProducts);
+      window.removeEventListener('storage', syncProducts);
+    };
+  }, []);
+
   const product = useMemo(() => {
-    if (!initialProduct) return OFFICIAL_PRODUCTS[0];
-    const full = getProductById(initialProduct.slug || initialProduct.id);
+    if (!initialProduct) return allProducts[0] || null;
+    const key = initialProduct.slug || initialProduct.id;
+    const full = allProducts.find((p) => p.slug === key || String(p.id) === String(key));
     return full || initialProduct;
-  }, [initialProduct]);
+  }, [initialProduct, allProducts]);
 
   // State galeri foto (foto aktif)
   const images = useMemo(() => {
+    if (!product) return [];
     if (product.images && product.images.length > 0) return product.images;
     return [product.image || '/images/asset-bpa/scc-uii.webp'];
   }, [product]);
@@ -87,12 +101,13 @@ export const ProductDetailPage = ({
 
   // Hitung total estimasi biaya
   const estimatedCost = useMemo(() => {
-    const base = product.priceValue || 0;
+    const base = product?.priceValue || 0;
     return base * quantity * rentalDays;
   }, [product, quantity, rentalDays]);
 
   // Aksi Masuk Keranjang
   const handleAddToCart = () => {
+    if (!product) return;
     if (onAddToCart) {
       onAddToCart(product, quantity, startDate, endDate, rentalDays, notes);
     }
@@ -102,6 +117,7 @@ export const ProductDetailPage = ({
 
   // Aksi Langsung Sewa (WhatsApp Checkout Instan dengan Notifikasi Approval)
   const handleDirectRent = () => {
+    if (!product) return;
     // Intersepsi Autentikasi Pengguna: Jika belum login, tampilkan modal notifikasi wajib login
     if (!currentUser) {
       if (onRequireAuth) {
@@ -110,7 +126,7 @@ export const ProductDetailPage = ({
       return;
     }
 
-    const bookingCode = `BPA-REV-${Date.now().toString().slice(-6)}`;
+    const bookingCode = generateShortBookingCode();
     const newBooking = {
       bookingCode,
       createdAt: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB',
@@ -119,9 +135,10 @@ export const ProductDetailPage = ({
         {
           id: product.id,
           name: product.name,
-          cat: product.cat,
-          priceText: product.priceText,
-          priceValue: product.priceValue,
+          cat: product.cat || product.category || 'Aset',
+          priceText: product.priceText || product.price || '',
+          priceValue: product.priceValue || 0,
+          image: (product.images && product.images[0]) || product.image,
           quantity,
           startDate,
           endDate,
@@ -132,6 +149,7 @@ export const ProductDetailPage = ({
         name: currentUser.name || 'Pemesan Langsung (Web BPA)',
         org: currentUser.org || 'Pribadi / Lembaga Mahasiswa',
         phone: currentUser.phone || 'WhatsApp User',
+        email: currentUser.email || '',
         notes: notes.trim()
       },
       totalCost: estimatedCost
@@ -144,8 +162,30 @@ export const ProductDetailPage = ({
 
   // Produk Terkait / Rekomendasi
   const relatedProducts = useMemo(() => {
-    return OFFICIAL_PRODUCTS.filter(p => p.id !== product.id).slice(0, 3);
-  }, [product]);
+    if (!product) return [];
+    return allProducts.filter((p) => p.id !== product.id).slice(0, 3);
+  }, [allProducts, product]);
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-slate-50 pb-24 pt-28 sm:pt-36 px-4">
+        <div className="max-w-lg mx-auto bg-white rounded-3xl border border-dashed border-slate-300 p-10 text-center space-y-4">
+          <Package className="w-12 h-12 text-slate-300 mx-auto" />
+          <h2 className="text-lg font-extrabold text-slate-800">Produk Belum Tersedia</h2>
+          <p className="text-xs text-slate-500">
+            Aset yang dipilih belum ditemukan atau katalog masih kosong.
+          </p>
+          <button
+            onClick={onBack}
+            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-uii-blue-900 text-white text-xs font-bold hover:bg-uii-blue-950 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Kembali ke Katalog</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 pt-24 sm:pt-28">
@@ -513,7 +553,7 @@ export const ProductDetailPage = ({
                     Tentang {product.name}
                   </h3>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    {product.description}
+                    {product.description || product.desc || 'Belum ada deskripsi rinci untuk aset ini.'}
                   </p>
                 </div>
 
@@ -674,6 +714,7 @@ export const ProductDetailPage = ({
         {/* ========================================================
             BAGIAN 4: REKOMENDASI ASET LAIN (SERING DISEWA BERSAMA)
            ======================================================== */}
+        {relatedProducts.length > 0 && (
         <div className="mt-16 pt-12 border-t border-slate-200/80">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -733,6 +774,7 @@ export const ProductDetailPage = ({
             ))}
           </div>
         </div>
+        )}
 
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Home, 
   Calendar as CalendarIcon, 
@@ -17,7 +17,16 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { OFFICIAL_PRODUCTS } from '../data/officialProducts';
+import { adminStorage } from '../utils/adminStorage';
+
+const DEFAULT_ASSET_STYLE = {
+  name: 'Aset BPA',
+  color: '#1e3a8a',
+  bgClass: 'bg-uii-blue-900',
+  lightBgClass: 'bg-blue-50',
+  borderClass: 'border-blue-200',
+  textClass: 'text-uii-blue-900',
+};
 
 // Konfigurasi Warna Identitas untuk Setiap Aset (Sesuai Permintaan Pengguna)
 export const ASSET_META = {
@@ -103,144 +112,41 @@ export const ASSET_META = {
   }
 };
 
-// Dataset Jadwal Pemakaian Terpadu (1 Kalender Terpadu untuk Semua Aset)
-const UNIFIED_BOOKED_SCHEDULES = [
-  {
-    id: 'sch-1',
-    date: '2026-11-02',
-    assetKey: 'Gedung SCC',
-    assetName: 'Gedung SCC',
-    agenda: 'Rapat Koordinasi Akbar DPM KM UII',
-    organizer: 'DPM KM UII',
-    time: '13.00 - 17.00 WIB'
-  },
-  {
-    id: 'sch-2',
-    date: '2026-11-05',
-    assetKey: 'Handy Talky (HT) Baofeng UV 82',
-    assetName: 'Handy Talky (HT) Baofeng UV 82 (10 Unit)',
-    agenda: 'Latihan Gabungan Lapangan Mapala Unisi',
-    organizer: 'Mapala Unisi',
-    time: '08.00 - 16.00 WIB'
-  },
-  {
-    id: 'sch-3',
-    date: '2026-11-07',
-    assetKey: 'Gedung SCC',
-    assetName: 'Gedung SCC',
-    agenda: 'Wisuda Periode II Universitas Islam Indonesia',
-    organizer: 'Rektorat UII',
-    time: '07.00 - 14.30 WIB'
-  },
-  {
-    id: 'sch-4',
-    date: '2026-11-07',
-    assetKey: 'HTS Portable Wireless Mic And Speaker P12E',
-    assetName: 'HTS Portable Wireless Mic And Speaker P12E',
-    agenda: 'Wisuda Periode II UII (Audio Cadangan Hall)',
-    organizer: 'Biro Logistik BPA',
-    time: '07.00 - 14.30 WIB'
-  },
-  {
-    id: 'sch-5',
-    date: '2026-11-10',
-    assetKey: 'Proyektor Epson EB x400',
-    assetName: 'Proyektor Epson EB x400',
-    agenda: 'Kuliah Tamu & Workshop Digital Bisnis Mahasiswa',
-    organizer: 'Himpunan Mahasiswa Jurusan',
-    time: '09.00 - 15.00 WIB'
-  },
-  {
-    id: 'sch-6',
-    date: '2026-11-10',
-    assetKey: 'Layar Proyektor',
-    assetName: 'Layar Proyektor Tripod',
-    agenda: 'Workshop Digital Bisnis Mahasiswa',
-    organizer: 'Himpunan Mahasiswa Jurusan',
-    time: '09.00 - 15.00 WIB'
-  },
-  {
-    id: 'sch-7',
-    date: '2026-11-14',
-    assetKey: 'Gedung SCC',
-    assetName: 'Gedung SCC',
-    agenda: 'Seminar Nasional Teknologi Industri FTI UII 2026',
-    organizer: 'BEM FTI UII',
-    time: '08.00 - 16.30 WIB'
-  },
-  {
-    id: 'sch-8',
-    date: '2026-11-14',
-    assetKey: 'Paket Nasi / Katering',
-    assetName: 'Paket Nasi (250 Box)',
-    agenda: 'Konsumsi Peserta Seminar Nasional FTI UII',
-    organizer: 'Panitia Semnas FTI',
-    time: '11.30 - 13.00 WIB'
-  },
-  {
-    id: 'sch-9',
-    date: '2026-11-18',
-    assetKey: 'Kursi Sapporo',
-    assetName: 'Kursi Sapporo (100 Unit)',
-    agenda: 'Festival Musik & Seni Budaya Mahasiswa UII',
-    organizer: 'Keluarga Mahasiswa UII',
-    time: '13.00 - 22.00 WIB'
-  },
-  {
-    id: 'sch-10',
-    date: '2026-11-18',
-    assetKey: 'Mic Wireless TNW',
-    assetName: 'Mic Wireless TNW',
-    agenda: 'Live Podcast & Talkshow Seni Budaya',
-    organizer: 'UKM Radio Mahasiswa',
-    time: '14.00 - 18.00 WIB'
-  },
-  {
-    id: 'sch-11',
-    date: '2026-11-21',
-    assetKey: 'Gedung SCC',
-    assetName: 'Gedung SCC',
-    agenda: 'Musyawarah Besar Lembaga Kemahasiswaan UII',
-    organizer: 'LEM UII',
-    time: '08.00 - 22.00 WIB'
-  },
-  {
-    id: 'sch-12',
-    date: '2026-11-21',
-    assetKey: 'Moment Kita Photobooth',
-    assetName: 'Moment Kita Photobooth',
-    agenda: 'Photobooth Wisuda & Musyawarah Mahasiswa',
-    organizer: 'Panitia Dokumentasi',
-    time: '09.00 - 17.00 WIB'
-  },
-  {
-    id: 'sch-13',
-    date: '2026-11-25',
-    assetKey: 'Megaphone 2R-2015S',
-    assetName: 'Megaphone 2R-2015S',
-    agenda: 'Simulasi Tanggap Bencana & Evakuasi Kampus',
-    organizer: 'KSR PMI Unit UII',
-    time: '08.00 - 12.00 WIB'
-  },
-  {
-    id: 'sch-14',
-    date: '2026-11-28',
-    assetKey: 'Handy Talky (HT) Baofeng UV 82',
-    assetName: 'Handy Talky (HT) Baofeng UV 82 (8 Unit)',
-    agenda: 'Pekan Olahraga Mahasiswa Antar Fakultas',
-    organizer: 'Biro Olahraga KM UII',
-    time: '07.00 - 18.00 WIB'
-  },
-  {
-    id: 'sch-15',
-    date: '2026-11-28',
-    assetKey: 'HTS Portable Wireless Mic And Speaker P12E',
-    assetName: 'HTS Portable Wireless Mic And Speaker P12E',
-    agenda: 'Opening Ceremony Pekan Olahraga Mahasiswa',
-    organizer: 'Biro Olahraga KM UII',
-    time: '07.30 - 10.00 WIB'
-  }
-];
+// Helper membangun map tanggal terpakai dari daftar booking aktif
+const buildSchedulesFromBookings = (bookings) => {
+  const map = {};
+  (Array.isArray(bookings) ? bookings : []).forEach((booking) => {
+    const status = String(booking.status || '').toUpperCase();
+    if (status.includes('TOLAK') || status.includes('BATAL')) return;
+    const items = Array.isArray(booking.items) ? booking.items : [];
+    items.forEach((it, itemIdx) => {
+      const startStr = it.startDate || '';
+      const endStr = it.endDate || startStr;
+      if (!startStr) return;
+      const startDate = new Date(startStr);
+      const endDate = new Date(endStr || startStr);
+      if (Number.isNaN(startDate.getTime())) return;
+      const validEnd = Number.isNaN(endDate.getTime()) || endDate < startDate ? startDate : endDate;
+      for (let d = new Date(startDate), step = 0; d <= validEnd && step < 31; d.setDate(d.getDate() + 1), step++) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const dateKey = `${y}-${m}-${day}`;
+        if (!map[dateKey]) map[dateKey] = [];
+        map[dateKey].push({
+          id: `${booking.bookingCode || 'bk'}-${itemIdx}-${dateKey}`,
+          date: dateKey,
+          assetKey: it.name || 'Aset BPA',
+          assetName: it.name || 'Aset BPA',
+          agenda: booking.customer?.notes || `Sewa ${it.name || 'Aset'} (${booking.status || 'Proses'})`,
+          organizer: booking.customer?.org || booking.customer?.name || 'Penyewa',
+          time: `${it.quantity || 1} unit`
+        });
+      }
+    });
+  });
+  return map;
+};
 
 export const SewaPage = ({
   onBackHome,
@@ -253,10 +159,27 @@ export const SewaPage = ({
   onOpenApprovalModal,
   onNavigateTracking
 }) => {
-  // State Kalender (Bulan & Tahun: November 2026)
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(10); // 0-indexed: 10 = November
-  const [selectedDateStr, setSelectedDateStr] = useState('2026-11-02');
+  const [products, setProducts] = useState(() => adminStorage.getProducts());
+  const [bookings, setBookings] = useState(() => adminStorage.getBookings());
+
+  useEffect(() => {
+    const syncData = () => {
+      setProducts(adminStorage.getProducts());
+      setBookings(adminStorage.getBookings());
+    };
+    window.addEventListener('bpa-data-updated', syncData);
+    window.addEventListener('storage', syncData);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncData);
+      window.removeEventListener('storage', syncData);
+    };
+  }, []);
+
+  // State Kalender (Default bulan berjalan)
+  const initialToday = useMemo(() => new Date(), []);
+  const [currentYear, setCurrentYear] = useState(() => initialToday.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => initialToday.getMonth());
+  const [selectedDateStr, setSelectedDateStr] = useState(() => initialToday.toISOString().split('T')[0]);
 
   // State Katalog Produk
   const [selectedProductCategory, setSelectedProductCategory] = useState('Semua');
@@ -308,35 +231,30 @@ export const SewaPage = ({
     }
   };
 
-  // Map Jadwal per Tanggal (YYYY-MM-DD)
-  const schedulesByDate = useMemo(() => {
-    const map = {};
-    for (const item of UNIFIED_BOOKED_SCHEDULES) {
-      if (!map[item.date]) {
-        map[item.date] = [];
-      }
-      map[item.date].push(item);
-    }
-    return map;
-  }, []);
+  // Map Jadwal per Tanggal (YYYY-MM-DD) dari booking aktif di sistem
+  const schedulesByDate = useMemo(() => buildSchedulesFromBookings(bookings), [bookings]);
 
   // Detail Jadwal pada Tanggal Terpilih
   const activeDaySchedules = schedulesByDate[selectedDateStr] || [];
 
-  // Filter Produk Sesuai Kategori Screenshot Pengguna (SCC, SAC, KATERING, PHOTOBOOTH)
-  const productCategories = ['Semua', 'SCC', 'SAC', 'KATERING', 'PHOTOBOOTH'];
+  // Kategori Produk Dinamis dari Katalog Admin
+  const productCategories = useMemo(() => {
+    const cats = Array.from(new Set(products.map((p) => p.cat || p.category).filter(Boolean)));
+    return ['Semua', ...cats];
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
-    return OFFICIAL_PRODUCTS.filter(prod => {
-      const matchCat = selectedProductCategory === 'Semua' || prod.cat === selectedProductCategory;
+    return products.filter(prod => {
+      const cat = prod.cat || prod.category || '';
+      const matchCat = selectedProductCategory === 'Semua' || cat === selectedProductCategory;
       const q = searchProductQuery.toLowerCase().trim();
       const matchQ = !q || 
-        prod.name.toLowerCase().includes(q) || 
-        prod.cat.toLowerCase().includes(q) ||
-        prod.priceText.toLowerCase().includes(q);
+        (prod.name || '').toLowerCase().includes(q) || 
+        cat.toLowerCase().includes(q) ||
+        (prod.priceText || prod.price || '').toLowerCase().includes(q);
       return matchCat && matchQ;
     });
-  }, [selectedProductCategory, searchProductQuery]);
+  }, [products, selectedProductCategory, searchProductQuery]);
 
   // Navigasi ke Halaman Detail Produk & Sewa (Tanpa Modal Overlay)
   const handleSelectProduct = (product) => {
@@ -697,12 +615,18 @@ export const SewaPage = ({
           ))}
         </div>
 
-        {/* Grid Produk Sewa Resmi (Desain Sesuai Screenshot bpakm.uii.ac.id/produk-kami/) */}
-        {filteredProducts.length > 0 ? (
+        {/* Grid Produk Sewa Resmi (Dikelompokkan dinamis berdasarkan kategori yang tersedia) */}
+        {products.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 p-8">
+            <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h4 className="text-base font-bold text-slate-800">Belum Ada Aset atau Produk Tersedia</h4>
+            <p className="text-xs text-slate-500 mt-1">Katalog penyewaan aset akan tampil di sini setelah ditambahkan oleh admin.</p>
+          </div>
+        ) : filteredProducts.length > 0 ? (
           selectedProductCategory === 'Semua' && !searchProductQuery ? (
             <div className="space-y-14">
-              {['SCC', 'SAC', 'KATERING', 'PHOTOBOOTH'].map((categoryName) => {
-                const items = filteredProducts.filter(p => p.cat === categoryName);
+              {productCategories.filter((c) => c !== 'Semua').map((categoryName) => {
+                const items = filteredProducts.filter((p) => (p.cat || p.category) === categoryName);
                 if (items.length === 0) return null;
                 return (
                   <div key={categoryName} className="space-y-6">
@@ -716,10 +640,10 @@ export const SewaPage = ({
                           className="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden group"
                         >
                           <div>
-                            {/* Gambar Produk: Ukuran Terkunci Rapi Sesuai Screenshot */}
+                            {/* Gambar Produk: Ukuran Terkunci Rapi */}
                             <div className="relative w-full h-64 sm:h-72 bg-slate-50 overflow-hidden flex-shrink-0 p-4 flex items-center justify-center">
                               <img
-                                src={prod.image}
+                                src={prod.image || prod.images?.[0] || '/images/asset-bpa/scc-uii.webp'}
                                 alt={prod.name}
                                 className="w-full h-full object-contain rounded-2xl group-hover:scale-105 transition-transform duration-500"
                                 onError={(e) => { e.target.src = '/images/asset-bpa/scc-uii.webp'; }}
@@ -728,18 +652,18 @@ export const SewaPage = ({
                               {/* Badge Kategori */}
                               <div className="absolute top-4 left-4 z-10">
                                 <span className="px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-uii-blue-950/90 text-uii-gold backdrop-blur-md border border-white/10 shadow-xs">
-                                  {prod.cat}
+                                  {prod.cat || prod.category || 'Aset'}
                                 </span>
                               </div>
                             </div>
 
-                            {/* Judul & Harga (Persis Sesuai Screenshot bpakm.uii.ac.id/produk-kami/) */}
+                            {/* Judul & Harga */}
                             <div className="p-6 pt-3 space-y-2">
                               <h3 className="font-extrabold text-[#192a3d] text-xl leading-snug font-heading group-hover:text-uii-blue-900 transition-colors">
                                 {prod.name}
                               </h3>
                               <p className="text-sm text-slate-600 font-semibold">
-                                {prod.priceText}
+                                {prod.priceText || prod.price || 'Hubungi Admin'}
                               </p>
                             </div>
                           </div>
@@ -786,10 +710,10 @@ export const SewaPage = ({
                   onClick={() => handleSelectProduct(prod)}
                 >
                   <div>
-                    {/* Gambar Produk: Ukuran Terkunci Rapi Sesuai Screenshot */}
+                    {/* Gambar Produk */}
                     <div className="relative w-full h-64 sm:h-72 bg-slate-50 overflow-hidden flex-shrink-0 p-4 flex items-center justify-center">
                       <img
-                        src={prod.image}
+                        src={prod.image || prod.images?.[0] || '/images/asset-bpa/scc-uii.webp'}
                         alt={prod.name}
                         className="w-full h-full object-contain rounded-2xl group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => { e.target.src = '/images/asset-bpa/scc-uii.webp'; }}
@@ -798,18 +722,18 @@ export const SewaPage = ({
                       {/* Badge Kategori */}
                       <div className="absolute top-4 left-4 z-10">
                         <span className="px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-uii-blue-950/90 text-uii-gold backdrop-blur-md border border-white/10 shadow-xs">
-                          {prod.cat}
+                          {prod.cat || prod.category || 'Aset'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Judul & Harga (Persis Sesuai Screenshot bpakm.uii.ac.id/produk-kami/) */}
+                    {/* Judul & Harga */}
                     <div className="p-6 pt-3 space-y-2">
                       <h3 className="font-extrabold text-[#192a3d] text-xl leading-snug font-heading group-hover:text-uii-blue-900 transition-colors">
                         {prod.name}
                       </h3>
                       <p className="text-sm text-slate-600 font-semibold">
-                        {prod.priceText}
+                        {prod.priceText || prod.price || 'Hubungi Admin'}
                       </p>
                     </div>
                   </div>

@@ -1,14 +1,27 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
   ArrowRight, 
-  User 
+  User,
+  FileText
 } from 'lucide-react';
-import { siteData } from '../data/siteData';
+import { adminStorage } from '../utils/adminStorage';
 
 export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
-  const articles = siteData.news || [];
+  const [allArticles, setAllArticles] = useState(() => adminStorage.getArticles());
+
+  useEffect(() => {
+    const syncArticles = () => setAllArticles(adminStorage.getArticles());
+    window.addEventListener('bpa-data-updated', syncArticles);
+    window.addEventListener('storage', syncArticles);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncArticles);
+      window.removeEventListener('storage', syncArticles);
+    };
+  }, []);
+
+  const articles = allArticles.slice(0, 4);
 
   return (
     <section id="news" className="py-16 sm:py-24 bg-white relative overflow-hidden border-t border-slate-200/80">
@@ -40,6 +53,17 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
         </div>
 
         {/* 4-Card Grid (1 Line Horizontal on Desktop) */}
+        {articles.length === 0 ? (
+          <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-12 text-center space-y-2.5">
+            <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mx-auto">
+              <FileText className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-800">Belum ada artikel yang dipublikasikan</h3>
+            <p className="text-xs text-slate-500">
+              Berita, liputan kegiatan, dan pengumuman resmi akan tampil setelah ditambahkan oleh admin.
+            </p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {articles.map((article) => (
             <article
@@ -51,7 +75,7 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
                 {/* Image Header with Zoom Effect & Category Badge */}
                 <div className="relative h-48 overflow-hidden bg-slate-100">
                   <img
-                    src={article.image}
+                    src={article.image || '/images/fit-uii.jpg'}
                     alt={article.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={(e) => { e.target.src = '/images/fit-uii.jpg'; }}
@@ -60,7 +84,7 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
                   
                   {/* Category Pill Tag */}
                   <span className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-uii-blue-900/90 backdrop-blur-md text-uii-gold text-[11px] font-bold tracking-wide shadow-sm">
-                    {article.category}
+                    {article.category || 'Berita'}
                   </span>
                 </div>
 
@@ -70,12 +94,12 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
                   <div className="flex items-center space-x-3 text-xs text-slate-500 font-medium">
                     <div className="flex items-center space-x-1.5">
                       <Calendar className="w-3.5 h-3.5 text-uii-gold-600" />
-                      <span>{article.date}</span>
+                      <span>{article.date || '-'}</span>
                     </div>
                     <span>•</span>
                     <div className="flex items-center space-x-1.5">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{article.readTime}</span>
+                      <span>{article.readTime || '3 menit'}</span>
                     </div>
                   </div>
 
@@ -86,7 +110,7 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
 
                   {/* Excerpt */}
                   <p className="text-xs sm:text-sm text-slate-600 line-clamp-3 leading-relaxed">
-                    {article.excerpt}
+                    {article.excerpt || ''}
                   </p>
                 </div>
               </div>
@@ -95,7 +119,7 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
               <div className="px-5 pb-5 sm:px-6 sm:pb-6 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                 <span className="text-slate-500 flex items-center space-x-1.5 font-medium truncate max-w-[140px]">
                   <User className="w-3.5 h-3.5 text-uii-gold-600 flex-shrink-0" />
-                  <span className="truncate">{article.author}</span>
+                  <span className="truncate">{article.author || 'Humas BPA'}</span>
                 </span>
 
                 <span className="inline-flex items-center space-x-1 text-uii-blue-900 font-bold group-hover:text-uii-blue-700 transition-colors">
@@ -106,6 +130,7 @@ export const LatestArticlesSection = ({ onOpenArticle, onViewAllArticles }) => {
             </article>
           ))}
         </div>
+        )}
       </div>
     </section>
   );

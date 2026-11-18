@@ -17,6 +17,7 @@ import {
   LogIn,
   UserPlus
 } from 'lucide-react';
+import { generateShortBookingCode } from '../data/trackingData';
 
 export const RentalCartDrawer = ({
   isOpen,
@@ -74,7 +75,7 @@ export const RentalCartDrawer = ({
     }
     setFormError('');
 
-    const bookingCode = `BPA-REV-${Date.now().toString().slice(-6)}`;
+    const bookingCode = generateShortBookingCode();
     const newBooking = {
       bookingCode,
       createdAt: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB',
@@ -84,6 +85,7 @@ export const RentalCartDrawer = ({
         name: customerName.trim(),
         org: customerOrg.trim() || 'Pribadi / Umum',
         phone: customerPhone.trim(),
+        email: currentUser?.email || '',
         notes: orderNotes.trim()
       },
       totalCost

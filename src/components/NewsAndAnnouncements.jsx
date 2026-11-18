@@ -1,11 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package } from 'lucide-react';
-import { siteData } from '../data/siteData';
+import { adminStorage } from '../utils/adminStorage';
 
 export const NewsAndAnnouncements = ({ onOpenArticle, onNavigateSewa, currentUser, onNavigateAuth }) => {
-  const allProducts = siteData.programs || [];
-  // 1 card template siap integrasi backend
-  const displayedProducts = allProducts.slice(0, 1);
+  const [allProducts, setAllProducts] = useState(() => adminStorage.getProducts());
+
+  useEffect(() => {
+    const syncProducts = () => setAllProducts(adminStorage.getProducts());
+    window.addEventListener('bpa-data-updated', syncProducts);
+    window.addEventListener('storage', syncProducts);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncProducts);
+      window.removeEventListener('storage', syncProducts);
+    };
+  }, []);
+
+  const displayedProducts = allProducts.slice(0, 4);
 
   // Handler tombol Sewa: Jika belum login langsung ke page login/register, jika sudah login ke SewaPage
   const handleSewaAction = (e, item) => {
@@ -38,10 +48,23 @@ export const NewsAndAnnouncements = ({ onOpenArticle, onNavigateSewa, currentUse
           </p>
         </div>
 
-        {/* Product Card Container (1 Card Template Rapi & Kecil Siap Backend) */}
-        <div className="max-w-xs mx-auto">
+        {/* Product Card Container */}
+        {displayedProducts.length === 0 ? (
+          <div className="max-w-lg mx-auto bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center space-y-2.5">
+            <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+              <Package className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-800 text-sm">Belum ada produk atau layanan</h3>
+            <p className="text-xs text-slate-500">
+              Data produk dan aset sewa belum ditambahkan oleh admin.
+            </p>
+          </div>
+        ) : (
+        <div className={`grid grid-cols-1 gap-6 ${displayedProducts.length === 1 ? 'max-w-xs mx-auto' : displayedProducts.length === 2 ? 'sm:grid-cols-2 max-w-2xl mx-auto' : displayedProducts.length === 3 ? 'sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto' : 'sm:grid-cols-2 lg:grid-cols-4'}`}>
           {displayedProducts.map((item) => {
-            const waText = encodeURIComponent(`Halo Pengelola BPA KM UII, saya ingin reservasi/sewa produk: ${item.name}`);
+            const imgSrc = item.image || item.images?.[0] || '/images/banner/banner.jpg';
+            const descText = item.desc || item.description || '';
+            const priceLabel = item.priceText || item.price || 'Hubungi Admin';
 
             return (
               <article
@@ -53,7 +76,7 @@ export const NewsAndAnnouncements = ({ onOpenArticle, onNavigateSewa, currentUse
                   {/* Gambar Produk */}
                   <div className="relative h-44 overflow-hidden bg-slate-100">
                     <img
-                      src={item.image}
+                      src={imgSrc}
                       alt={item.name}
                       className={`w-full h-full object-cover ${item.imagePosition || 'object-center'} group-hover:scale-105 transition-transform duration-500`}
                       onError={(e) => { e.target.src = '/images/banner/banner.jpg'; }}
@@ -69,14 +92,14 @@ export const NewsAndAnnouncements = ({ onOpenArticle, onNavigateSewa, currentUse
 
                     {/* Deskripsi Barang */}
                     <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
-                      {item.description}
+                      {descText}
                     </p>
 
                     {/* Harga Barang */}
                     <div className="pt-2 border-t border-slate-100 flex items-baseline justify-between">
                       <span className="text-[11px] text-slate-400 font-medium">Harga Sewa</span>
                       <span className="text-sm font-extrabold text-uii-blue-900 font-heading">
-                        {item.price || 'Rp 2.500.000 / hari'}
+                        {priceLabel}
                       </span>
                     </div>
                   </div>
@@ -96,6 +119,7 @@ export const NewsAndAnnouncements = ({ onOpenArticle, onNavigateSewa, currentUse
             );
           })}
         </div>
+        )}
 
       </div>
     </section>

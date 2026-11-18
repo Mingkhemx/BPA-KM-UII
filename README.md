@@ -1,103 +1,75 @@
-# Website FTI UII – Modern React & Tailwind CSS
+<div align="center">
+  <img src="public/images/logo/Logo-BPA-KM-UII-removebg.png" alt="Logo BPA KM UII" width="130" />
 
-Website resmi Fakultas Teknologi Industri Universitas Islam Indonesia (FTI UII) yang telah dikonversi dan diperbarui dari file HTML statis lama menjadi aplikasi web modern berbasis **React 18 + Vite + Tailwind CSS + Framer Motion**.
+  # Portal Layanan & Manajemen Aset BPA KM UII
 
----
+  **Platform Digital Resmi Badan Pengelola Aset Keluarga Mahasiswa Universitas Islam Indonesia (BPA KM UII)**
 
-## 🌟 Apa yang Baru dan Telah Dirapikan?
-
-1. **Struktur Folder Bersih & Rapi**:
-   - Sebanyak **231 file HTML lama** yang sebelumnya berserakan di folder root kini telah dirapikan dan dipindahkan ke dalam folder **`legacy_html/`**.
-   - Dilengkapi dengan **`legacy_html/index.html`** sebagai *Master Catalog* berkategori (Profil, Akademik, Karir, Riset, Berita) dengan fitur pencarian instan.
-2. **Modern Web Tech Stack (Tidak Ketinggalan Zaman)**:
-   - **React 18 + Vite**: Cepat, ringan, *hot-module replacement* (HMR) instan.
-   - **Tailwind CSS**: Styling modern berbasis utility classes, warna resmi UII (Navy `#06337b` & Gold `#ffe600`), glassmorphism, responsive di HP/Tablet/Desktop.
-   - **Framer Motion**: Animasi perpindahan slide hero, transisi tab, animasi kartu, hover elevation, dan efek modal yang mulus.
-   - **Lucide Icons**: Ikon SVG modern, tajam, dan ringan menggantikan font icon lama (flaticon/entypo).
-3. **Fitur-Fitur Interaktif**:
-   - **Hero Banner Slider**: Slideshow interaktif dengan autoplay, pause, next/prev, dan tombol CTA.
-   - **Live Search Modal**: Pencarian langsung prodi, berita, dan pengumuman (cukup tekan ikon search atau tombol ESC untuk menutup).
-   - **Filter Program Studi**: Filter interaktif Sarjana (S1 Reguler & International), Pascasarjana (S2/S3), dan Profesi Insinyur (PSPPI).
-   - **Detail Reader Modal**: Membaca artikel berita, pengumuman UTS, dan agenda akademik langsung tanpa reload halaman.
-   - **Video Profil Kampus**: Pemutar video profil YouTube FTI UII langsung dalam pop-up modal.
-   - **Download Center Sertifikat Akreditasi**: Unduh langsung sertifikat PDF LAM-Teknik, BAN-PT, dan IABEE.
-   - **Testimoni Alumni**: Slider cerita sukses lulusan yang berkarier di perusahaan multinasional.
+  [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+  [![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+  [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+  [![Framer Motion](https://img.shields.io/badge/Framer_Motion-11-0055FF?style=for-the-badge&logo=framer&logoColor=white)](https://www.framer.com/motion/)
+  [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon_DB-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://neon.tech/)
+</div>
 
 ---
 
-## 🚀 Cara Menjalankan Website
+## Tentang Platform
 
-Pastikan Node.js sudah terpasang di komputer Anda.
+**Portal BPA KM UII** adalah sistem informasi terpadu untuk pengelolaan aset, reservasi sarana dan prasarana (sarpras), pelacakan kesiapan lapangan secara transparan, serta publikasi informasi kelembagaan **Badan Pengelola Aset Keluarga Mahasiswa Universitas Islam Indonesia**.
 
-### 1. Menjalankan Server Development (Live Edit)
-```bash
-npm run dev
-```
-Buka browser di: [http://localhost:3000](http://localhost:3000)
-
-### 2. Membangun untuk Production (Build)
-```bash
-npm run build
-```
-File hasil build yang siap di-hosting akan berada di folder `dist/`.
-
-### 3. Meninjau Hasil Production
-```bash
-npm run preview
-```
+Platform ini menghubungkan penyewa (mahasiswa, lembaga, maupun umum), tim operasional lapangan (PIC), dan pengurus inti dalam satu ekosistem digital yang modern, responsif, dan terintegrasi.
 
 ---
 
-## 📁 Struktur Direktori
+## Fitur Utama
 
-```
-WEBSITE BPA/
-├── legacy_html/                  # Arsip 231 file HTML lama yang sudah dirapikan
-│   ├── index.html                # Master Catalog & Dashboard Arsip
-│   └── *.html                    # Seluruh halaman HTML lama (tersimpan aman)
-├── public/                       # Aset publik statis
-│   ├── images/                   # Folder gambar website
-│   └── docs/                     # Sertifikat Akreditasi PDF
-├── src/
-│   ├── components/
-│   │   ├── Navbar.jsx            # Header & menu navigasi responsif
-│   │   ├── HeroSlider.jsx        # Slider banner utama beranimasi
-│   │   ├── QuickStats.jsx        # Statistik keunggulan & angka akreditasi
-│   │   ├── DeanGreetingSection.jsx # Sambutan Dekan, Visi-Misi & Dekanat
-│   │   ├── StudyProgramsSection.jsx # Kartu & filter Program Studi
-│   │   ├── NewsAndAnnouncements.jsx # Tab Berita, Pengumuman & Agenda
-│   │   ├── InteractiveServices.jsx # Layanan kampus & Download Akreditasi
-│   │   ├── TestimonialSection.jsx # Slider testimoni alumni
-│   │   ├── DetailModal.jsx       # Modal pembaca artikel & detail prodi
-│   │   ├── SearchModal.jsx       # Pencarian live interaktif
-│   │   └── Footer.jsx            # Footer komprehensif & kontak UII
-│   ├── data/
-│   │   └── siteData.js           # Database data konten (mudah diedit)
-│   ├── App.jsx                   # Komponen utama aplikasi
-│   ├── main.jsx                  # Entry point React
-│   └── index.css                 # Konfigurasi Tailwind & utility styles
-├── index.html                    # Entry point modern Vite
-├── tailwind.config.js            # Konfigurasi warna & animasi Tailwind
-├── vite.config.js                # Konfigurasi Vite
-└── package.json                  # Dependencies proyek
-```
+### 1. Layanan Publik & Katalog Sewa Aset
+- **Kalender Ketersediaan Real-Time**: Kalender terpadu lintas aset dengan penanda warna untuk melihat jadwal pemakaian gedung, sound system, proyektor, HT, kursi, dan perlengkapan acara lainnya.
+- **Katalog Produk & Layanan**: Penjelajahan unit sarpras lengkap dengan kategori, stok tersedia, tarif sewa harian, dan keranjang reservasi.
+- **Profil Lembaga, Investor, Galeri & Artikel**: Penyajian informasi unit usaha BPA KM UII, struktur pengurus, dokumen transparansi/LPJ, galeri dokumentasi foto & video, serta berita kegiatan.
+
+### 2. Pelacakan Progres Sewa Transparan (Live Preparation Tracker)
+- **Pencarian Kode Sewa**: Pemantauan status pemesanan menggunakan kode booking unik.
+- **Indikator Kesiapan 6 Tahap**: Visualisasi progres terstruktur mulai dari **1. Pengajuan**, **2. Approval**, **3. DP**, **4. Cek Fisik**, **5. Setting**, hingga **6. Ready** dengan bar progres yang selaras dengan posisi tahapan aktif.
+- **Berita Acara & Dokumentasi Lapangan**: Log pembaruan langsung dari tim teknis/PIC BPA lengkap dengan foto dokumentasi lapangan dan kontak WhatsApp PIC penanggung jawab.
+
+### 3. Akun Pengguna & Riwayat Reservasi
+- **Autentikasi Google OAuth & Akun Terdaftar**: Pengelolaan profil penyewa beserta riwayat pengajuan sewa yang tersinkronisasi.
+- **Akses Cepat Detail & Tracking**: Pemantauan status persetujuan hingga penyelesaian acara dari halaman profil.
+
+### 4. Portal Staf & Dashboard Admin Terpadu
+- **Cek Pesanan Aset & Klaim PIC**: Penentuan penanggung jawab (PIC) aset, persetujuan cepat (Approve/Reject), dan pemantauan jadwal bentrok.
+- **Approval & Laporan Penyewaan**: Pembaruan progres kesiapan dengan slider snap per tahap (Tahap 1–6), pengisian berita acara, serta unggah foto dokumentasi lapangan yang terkompresi otomatis.
+- **Laporan Pendapatan Aset**: Rekapitulasi pemasukan dari seluruh transaksi penyewaan sarpras.
+- **Website CMS Dinamis**: Pengelolaan konten Banner, Katalog Produk, Artikel/Berita, Pengurus/Investor, Dokumen LPJ, dan Galeri Dokumentasi dengan unggah foto langsung dari perangkat.
 
 ---
 
-## 🎨 Cara Menyesuaikan atau Menambah Animasi
+## Showcase Tampilan Website
 
-Animasi diatur menggunakan **Framer Motion**. Anda dapat dengan mudah mengubah durasi, tipe transisi, atau efek:
+| Profil & Unit Usaha BPA KM UII | Layanan Reservasi & Kalender Aset |
+| :---: | :---: |
+| ![Profil & Unit Usaha BPA KM UII](docs/screenshots/unit-usaha.png) | ![Layanan Reservasi & Kalender Aset](docs/screenshots/layanan-sewa.png) |
 
-1. **Mengubah Efek Masuk (Fade / Slide)**:
-   Buka file komponen terkait (misalnya di `src/components/HeroSlider.jsx`), cari properti `initial`, `animate`, dan `transition`:
-   ```jsx
-   <motion.div
-     initial={{ opacity: 0, y: 20 }}
-     animate={{ opacity: 1, y: 0 }}
-     transition={{ duration: 0.5, ease: "easeOut" }}
-   >
-   ```
+| Pelacakan Progres & Persiapan Sewa | Identitas & Filosofi Logo BPA KM UII |
+| :---: | :---: |
+| ![Pelacakan Progres & Persiapan Sewa](docs/screenshots/lacak-progres.png) | ![Identitas & Filosofi Logo BPA KM UII](docs/screenshots/tentang-kami.png) |
 
-2. **Mengubah Konten Berita / Prodi / Kontak**:
-   Buka file **`src/data/siteData.js`**. Semua teks, foto, nama dosen, berita, dan tautan diatur secara terpusat di file ini tanpa perlu membongkar kode komponen!
+---
 
+## Arsitektur & Teknologi
+
+| Komponen | Teknologi |
+| :--- | :--- |
+| **Frontend Framework** | React 18, Vite 6 |
+| **Styling & Animasi** | Tailwind CSS 3, Framer Motion, Lucide Icons |
+| **Backend & API** | Node.js, Express |
+| **Database** | PostgreSQL (Neon Serverless) |
+| **Autentikasi** | Google OAuth 2.0 & Role-Based Access (User, Staf, Admin) |
+
+---
+
+<div align="center">
+  <sub>© Badan Pengelola Aset Keluarga Mahasiswa Universitas Islam Indonesia (BPA KM UII)</sub>
+</div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Globe, 
@@ -13,17 +13,31 @@ import {
   Bell,
   Sparkles,
   BarChart3,
-  CalendarCheck
+  CalendarCheck,
+  PackageCheck,
+  DollarSign,
+  Edit3
 } from 'lucide-react';
 import { WebsiteCmsTab } from './tabs/WebsiteCmsTab';
 import { UserManagementTab } from './tabs/UserManagementTab';
 import { RentalReportsTab } from './tabs/RentalReportsTab';
+import { AssetOrdersTab } from './tabs/AssetOrdersTab';
+import { RentalRevenueTab } from './tabs/RentalRevenueTab';
+import { EditProfileModal } from './EditProfileModal';
 
-export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
-  // 3 Kategori Utama Dashboard Admin sesuai Permintaan Pengguna:
+export const AdminDashboard = ({ adminUser, onLogout, onGoToSite, onUpdateProfile }) => {
+  const [currentUser, setCurrentUser] = useState(adminUser);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+
+  useEffect(() => {
+    setCurrentUser(adminUser);
+  }, [adminUser]);
+
+  // Kategori Utama Dashboard Admin:
   // 1. 'website' = Khusus Website (Banner, Testimoni, Produk, Artikel, Investor & Dokumen, Galeri)
   // 2. 'users' = Akun Pengguna
   // 3. 'rentals' = Bagian Sewa Produk & Laporan
+  // 4. 'asset-orders' = Cek Pesanan Aset & Upload Perkembangan
   const [activeCategory, setActiveCategory] = useState('website');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -51,6 +65,22 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
       icon: BarChart3,
       badge: 'Operasional',
       badgeColor: 'bg-amber-100 text-amber-900'
+    },
+    {
+      id: 'asset-orders',
+      title: 'Cek Pesanan Aset',
+      subtitle: 'Monitor Stok & Upload Progres',
+      icon: PackageCheck,
+      badge: 'Smart Ops',
+      badgeColor: 'bg-indigo-100 text-indigo-900'
+    },
+    {
+      id: 'revenue',
+      title: 'Pendapatan Sewa',
+      subtitle: 'Total & Rincian Barang Tersewa',
+      icon: DollarSign,
+      badge: 'Keuangan',
+      badgeColor: 'bg-emerald-100 text-emerald-900'
     }
   ];
 
@@ -58,21 +88,27 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row text-slate-800 font-sans selection:bg-uii-blue-950 selection:text-uii-gold">
       
       {/* =========================================================================
-          SIDEBAR ADMIN (KIRI)
+          SIDEBAR ADMIN (KIRI - FIXED DI DESKTOP)
          ========================================================================= */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-[#0c1f38] text-white flex flex-col justify-between transition-transform duration-300 md:static md:translate-x-0
+        fixed inset-y-0 left-0 z-40 w-72 bg-[#0c1f38] text-white flex flex-col justify-between overflow-y-auto transition-transform duration-300 md:translate-x-0
         ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
       `}>
         <div>
           {/* Header Sidebar dengan Logo BPA */}
           <div className="p-5 border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-white p-1.5 flex items-center justify-center shadow-md">
+              <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
                 <img
-                  src="/images/logo/logo.png"
+                  src="/images/logo/Logo-BPA-KM-UII-removebg.png"
                   alt="Logo BPA KM UII"
-                  className="h-full w-auto object-contain"
+                  className="h-full w-full object-contain filter drop-shadow-md"
+                  onError={(e) => {
+                    if (!e.currentTarget.dataset.retried) {
+                      e.currentTarget.dataset.retried = 'true';
+                      e.currentTarget.src = '/images/logo/logo.png';
+                    }
+                  }}
                 />
               </div>
               <div>
@@ -93,10 +129,10 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
             </button>
           </div>
 
-          {/* Navigasi 3 Kategori Utama */}
+          {/* Navigasi 4 Kategori Utama */}
           <div className="p-4 space-y-1.5">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-3 py-1 block">
-              3 Kategori Manajemen:
+              Menu Manajemen:
             </span>
 
             {navCategories.map((cat) => {
@@ -138,17 +174,40 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
           </div>
         </div>
 
-        {/* Footer Sidebar: Profil Admin & Tombol Logout */}
+        {/* Footer Sidebar: Profil Admin (Bisa Diklik untuk Edit Profil & Foto) */}
         <div className="p-4 border-t border-white/10 space-y-3">
-          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-uii-blue-900 border border-uii-gold text-uii-gold font-black flex items-center justify-center text-sm flex-shrink-0">
-              {adminUser?.name ? adminUser.name.charAt(0).toUpperCase() : 'A'}
+          <button
+            type="button"
+            onClick={() => setIsEditProfileOpen(true)}
+            className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-uii-gold/50 flex items-center space-x-3 text-left transition-all group relative cursor-pointer shadow-xs"
+            title="Klik untuk edit profil & foto akun admin"
+          >
+            <div className="relative flex-shrink-0">
+              {currentUser?.picture ? (
+                <img
+                  src={currentUser.picture}
+                  alt={currentUser.name}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-uii-gold"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-uii-blue-900 border border-uii-gold text-uii-gold font-black flex items-center justify-center text-sm">
+                  {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'A'}
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-uii-gold text-uii-blue-950 flex items-center justify-center shadow-xs">
+                <Edit3 className="w-2.5 h-2.5" />
+              </div>
             </div>
             <div className="min-w-0 flex-1">
-              <span className="text-xs font-black text-white block truncate">{adminUser?.name || 'Administrator BPA'}</span>
-              <span className="text-[10px] text-uii-gold block font-semibold truncate">{adminUser?.role || 'Presiden Direktur'}</span>
+              <span className="text-xs font-black text-white block truncate group-hover:text-uii-gold transition-colors">
+                {currentUser?.name || 'Administrator BPA'}
+              </span>
+              <span className="text-[10px] text-uii-gold block font-semibold truncate">
+                {currentUser?.role || 'Presiden Direktur'}
+              </span>
             </div>
-          </div>
+            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+          </button>
 
           <div className="flex items-center space-x-2">
             <button
@@ -182,7 +241,7 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
       {/* =========================================================================
           MAIN CONTENT AREA (KANAN)
          ========================================================================= */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:pl-72">
         
         {/* Topbar Admin */}
         <header className="bg-white border-b border-slate-200/90 sticky top-0 z-20 px-5 py-3.5 flex items-center justify-between">
@@ -208,18 +267,10 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
                 {activeCategory === 'website' && 'Kategori 1: Khusus Website (CMS & Konten)'}
                 {activeCategory === 'users' && 'Kategori 2: Akun Pengguna (User Management)'}
                 {activeCategory === 'rentals' && 'Kategori 3: Bagian Sewa Produk & Laporan'}
+                {activeCategory === 'asset-orders' && 'Kategori 4: Cek Pesanan Aset & Upload Perkembangan'}
+                {activeCategory === 'revenue' && 'Kategori 5: Pendapatan Dari Semua Barang Tersewa'}
               </h1>
             </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={onGoToSite}
-              className="hidden sm:inline-flex items-center space-x-1.5 text-xs font-bold text-uii-blue-950 hover:text-uii-blue-800 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition-colors"
-            >
-              <Globe className="w-3.5 h-3.5 text-uii-gold-600" />
-              <span>Lihat Website</span>
-            </button>
           </div>
         </header>
 
@@ -227,7 +278,9 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
         <main className="p-4 sm:p-7 flex-1 overflow-y-auto">
           {activeCategory === 'website' && <WebsiteCmsTab />}
           {activeCategory === 'users' && <UserManagementTab />}
-          {activeCategory === 'rentals' && <RentalReportsTab />}
+          {activeCategory === 'rentals' && <RentalReportsTab adminUser={currentUser} />}
+          {activeCategory === 'asset-orders' && <AssetOrdersTab adminUser={currentUser} />}
+          {activeCategory === 'revenue' && <RentalRevenueTab />}
         </main>
 
         {/* Footer Admin Bar */}
@@ -236,6 +289,17 @@ export const AdminDashboard = ({ adminUser, onLogout, onGoToSite }) => {
         </footer>
       </div>
 
+      {/* Modal Edit Profil Admin */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+        currentUser={currentUser}
+        portalType="admin"
+        onSave={(updated) => {
+          setCurrentUser(updated);
+          onUpdateProfile?.(updated);
+        }}
+      />
     </div>
   );
 };

@@ -9,16 +9,19 @@ import {
   Sparkles,
   ArrowRight,
   Clock,
-  MessageCircle
+  MessageCircle,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export const FloatingHub = ({
   cartItems = [],
   onOpenCart,
   onNavigateTracking,
-  activeBooking = null
+  activeBookings = []
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(null);
   const hubRef = useRef(null);
 
   const totalCartCount = cartItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
@@ -50,7 +53,7 @@ export const FloatingHub = ({
 
   const handleNavigateTrackingAction = () => {
     setIsOpen(false);
-    if (onNavigateTracking) onNavigateTracking(activeBooking?.bookingCode || '');
+    if (onNavigateTracking) onNavigateTracking('');
   };
 
   return (
@@ -116,32 +119,85 @@ export const FloatingHub = ({
               </button>
 
               {/* 2. KARTU LACAK PROGRES SEWA */}
-              <button
-                onClick={handleNavigateTrackingAction}
-                className="w-full text-left p-3.5 rounded-2xl bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 transition-all flex items-center space-x-3 group shadow-2xs"
-              >
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-uii-blue-950 to-uii-blue-800 text-uii-gold flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                  <Compass className="w-5 h-5 text-uii-gold" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs sm:text-sm font-black text-uii-blue-950 font-heading">
-                      Lacak Progres Sewa
-                    </h4>
-                    {activeBooking && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[9px] font-bold">
-                        Aktif
-                      </span>
-                    )}
+              <div className="w-full text-left p-3.5 rounded-2xl bg-white hover:bg-blue-50/40 border border-slate-200 hover:border-blue-300 transition-all shadow-2xs group flex flex-col space-y-2.5">
+                <button
+                  type="button"
+                  onClick={handleNavigateTrackingAction}
+                  className="w-full text-left flex items-start space-x-3 cursor-pointer"
+                >
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-uii-blue-950 to-uii-blue-800 text-uii-gold flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform mt-0.5">
+                    <Compass className="w-5 h-5 text-uii-gold" />
                   </div>
-                  <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                    {activeBooking 
-                      ? `Kode #${activeBooking.bookingCode}` 
-                      : 'Pantau kesiapan sarana & prasarana'}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-uii-blue-900 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-              </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs sm:text-sm font-black text-uii-blue-950 font-heading">
+                        Lacak Progres Sewa
+                      </h4>
+                      {activeBookings.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-uii-blue-950 text-[10px] font-black flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                          <span>{activeBookings.length} Aktif</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                      {activeBookings.length > 0
+                        ? `${activeBookings.length} sewa aktif sedang diproses:`
+                        : 'Masukkan ID sewa untuk cek progres'}
+                    </p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-uii-blue-900 group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-1" />
+                </button>
+
+                {/* Daftar Chip Kode Booking yang Sedang Berjalan / Dalam Progres */}
+                {activeBookings.length > 0 && (
+                  <div className="pt-2 border-t border-slate-100 flex flex-col space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <span>Kode Sewa Anda:</span>
+                      <span className="text-[9px] text-blue-600 font-semibold lowercase">klik untuk lacak</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeBookings.map((b) => (
+                        <div
+                          key={b.bookingCode}
+                          className="inline-flex items-center rounded-xl bg-blue-50 border border-blue-200/90 text-uii-blue-950 text-xs overflow-hidden shadow-2xs group/chip hover:border-uii-blue-900 transition-colors"
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsOpen(false);
+                              if (onNavigateTracking) onNavigateTracking(b.bookingCode);
+                            }}
+                            className="px-2.5 py-1 font-mono font-black text-[11px] text-uii-blue-950 hover:text-blue-700 flex items-center space-x-1"
+                            title={`Buka pelacakan untuk kode #${b.bookingCode}`}
+                          >
+                            <span>#{b.bookingCode}</span>
+                            <ArrowRight className="w-3 h-3 text-slate-400 group-hover/chip:text-blue-700 group-hover/chip:translate-x-0.5 transition-all" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard?.writeText(b.bookingCode);
+                              setCopiedCode(b.bookingCode);
+                              setTimeout(() => setCopiedCode(null), 1800);
+                            }}
+                            className="p-1 px-1.5 bg-blue-100/70 hover:bg-blue-200/80 border-l border-blue-200 text-uii-blue-900 transition-colors"
+                            title="Salin ID sewa"
+                          >
+                            {copiedCode === b.bookingCode ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-500" />
+                            )}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* 3. FAST CONTACT KONSULTASI WA (OPSIONAL RINGAN) */}
               <a
@@ -205,6 +261,16 @@ export const FloatingHub = ({
         {!isOpen && totalCartCount > 0 && (
           <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-uii-gold text-uii-blue-950 text-[11px] font-black flex items-center justify-center shadow-md border border-uii-blue-950 animate-bounce">
             {totalCartCount}
+          </span>
+        )}
+
+        {/* Live Active Bookings Badge (Jika keranjang kosong tapi ada sewa aktif dalam progres) */}
+        {!isOpen && totalCartCount === 0 && activeBookings.length > 0 && (
+          <span
+            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] font-black flex items-center justify-center shadow-md border-2 border-white animate-pulse"
+            title={`${activeBookings.length} sewa aktif sedang diproses`}
+          >
+            {activeBookings.length}
           </span>
         )}
       </motion.button>

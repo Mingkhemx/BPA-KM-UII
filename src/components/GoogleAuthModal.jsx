@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   CheckCircle2,
   Database,
-  ExternalLink,
   ChevronRight,
   UserPlus,
   KeyRound,
   AlertCircle,
-  Sparkles,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
-  Check
+  Check,
+  Phone,
+  Building,
+  User
 } from 'lucide-react';
 import {
   saveGoogleUserToNeon,
+  checkRegisteredUserByEmail,
   getGoogleClientId,
   setCustomGoogleClientId
 } from '../services/googleAuth';
@@ -24,32 +27,63 @@ export const GoogleAuthModal = ({
   isOpen,
   onClose,
   onUserSuccess,
-  mode = 'login'
+  mode = 'login',
+  initialPendingProfile = null
 }) => {
+  const [step, setStep] = useState('choose'); // 'choose' | 'complete-profile'
   const [authStatus, setAuthStatus] = useState('idle'); // 'idle' | 'loading' | 'success' | 'error'
   const [statusText, setStatusText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  
-  // Custom account input form state
+  const [infoBanner, setInfoBanner] = useState('');
+
+  // Custom account email input on Step 1
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customEmail, setCustomEmail] = useState('');
   const [customName, setCustomName] = useState('');
+
+  // Step 2: Mandatory Registration Details (Origin/Masyarakat + WhatsApp)
+  const [pendingGoogleAccount, setPendingGoogleAccount] = useState(null);
+  const [regName, setRegName] = useState('');
+  const [regCategory, setRegCategory] = useState('Masyarakat Umum');
+  const [regOrg, setRegOrg] = useState('');
+  const [regPhone, setRegPhone] = useState('');
 
   // Google Cloud Console Client ID config drawer
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [customClientIdInput, setCustomClientIdInput] = useState(() => getGoogleClientId());
   const [saveKeySuccess, setSaveKeySuccess] = useState(false);
 
+  // Reset modal state saat dibuka/ditutup
+  useEffect(() => {
+    if (!isOpen) return;
+    setErrorMessage('');
+    setAuthStatus('idle');
+    setShowCustomForm(false);
+
+    if (initialPendingProfile) {
+      openCompleteProfileStep(
+        initialPendingProfile,
+        mode === 'login'
+          ? 'Akun Google Anda belum terdaftar. Lengkapi asal pemohon & nomor WhatsApp untuk membuat akun.'
+          : 'Satu langkah lagi! Pilih asal pemohon & masukkan nomor WhatsApp aktif untuk mendaftar.'
+      );
+    } else {
+      setStep('choose');
+      setPendingGoogleAccount(null);
+      setInfoBanner('');
+    }
+  }, [isOpen, initialPendingProfile, mode]);
+
   if (!isOpen) return null;
 
-  // Preset Google Accounts (Akun Cepat Terverifikasi)
+  // Preset Google Accounts (Untuk pilihan cepat)
   const PRESET_ACCOUNTS = [
     {
       id: 'uii-student-01',
       name: 'Muhammad Fathir Al-Ghifari',
       email: 'fathir.alghifari@student.uii.ac.id',
-      role: 'Mahasiswa Aktif UII',
-      org: 'Informatika FTI UII',
+      suggestedCategory: 'Mahasiswa Aktif UII',
+      suggestedOrg: 'Informatika FTI UII',
       avatarBg: 'bg-blue-600',
       badgeColor: 'bg-blue-100 text-blue-900 border-blue-200',
       initials: 'MF'
@@ -58,8 +92,8 @@ export const GoogleAuthModal = ({
       id: 'uii-staff-01',
       name: 'BPA Sarpras Kemahasiswaan',
       email: 'sarpras.fti@uii.ac.id',
-      role: 'Organisasi / Lembaga UII',
-      org: 'Biro Pengelolaan Aset KM UII',
+      suggestedCategory: 'Organisasi / Lembaga UII',
+      suggestedOrg: 'Biro Pengelolaan Aset KM UII',
       avatarBg: 'bg-amber-600',
       badgeColor: 'bg-amber-100 text-amber-900 border-amber-200',
       initials: 'BP'
@@ -68,58 +102,74 @@ export const GoogleAuthModal = ({
       id: 'general-user-01',
       name: 'Penyewa Mitra (Personal)',
       email: 'pengguna.bpa@gmail.com',
-      role: 'Masyarakat Umum',
-      org: 'Personal (Akun Google)',
+      suggestedCategory: 'Masyarakat Umum',
+      suggestedOrg: '',
       avatarBg: 'bg-emerald-600',
       badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-200',
       initials: 'PM'
     }
   ];
 
-  // Eksekusi Login dengan Akun yang Dipilih
+  const openCompleteProfileStep = (account, bannerText) => {
+    const emailLower = (account.email || '').toLowerCase();
+    const isUiiStudent = emailLower.endsWith('@student.uii.ac.id');
+    const isUiiStaff = emailLower.endsWith('@uii.ac.id');
+
+    setPendingGoogleAccount(account);
+    setRegName(account.name || '');
+    setRegCategory(
+      account.suggestedCategory ||
+        (isUiiStudent
+          ? 'Mahasiswa Aktif UII'
+          : isUiiStaff
+          ? 'Organisasi / Lembaga UII'
+          : 'Masyarakat Umum')
+    );
+    setRegOrg(account.suggestedOrg || '');
+    setRegPhone(''); // Kosongkan agar user wajib mengisi nomor WhatsApp asli
+    setInfoBanner(bannerText);
+    setErrorMessage('');
+    setAuthStatus('idle');
+    setStep('complete-profile');
+  };
+
+  // Langkah 1: Pilih akun Google -> cek apakah sudah terdaftar atau harus lengkapi data
   const handleSelectAccount = async (account) => {
     setErrorMessage('');
     setAuthStatus('loading');
-    setStatusText('Menghubungkan ke layanan Akun Google...');
+    setStatusText('Memeriksa status akun Google di sistem...');
 
     try {
-      await new Promise((res) => setTimeout(res, 450));
-      setStatusText('Menyinkronkan data pengguna ke Neon PostgreSQL...');
+      const check = await checkRegisteredUserByEmail(account.email);
 
-      const googleUser = {
-        id: `google-${account.id || Date.now()}`,
-        name: account.name,
-        email: account.email,
-        identifier: account.email,
-        picture: '',
-        phone: '081234567890',
-        category: account.role,
-        org: account.org,
-        status: 'Aktif',
-        loginAt: new Date().toLocaleString('id-ID'),
-        authProvider: 'google',
-        googleId: `g_${Date.now()}`
-      };
+      if (mode === 'login' && check.exists && check.user) {
+        // Sudah terdaftar -> langsung masuk menggunakan profil asli dari database
+        setStatusText('Akun ditemukan! Masuk ke sistem...');
+        setAuthStatus('success');
+        setTimeout(() => {
+          setAuthStatus('idle');
+          onUserSuccess?.(check.user);
+          onClose();
+        }, 550);
+        return;
+      }
 
-      // Simpan langsung ke Neon PostgreSQL
-      const savedUser = await saveGoogleUserToNeon(googleUser);
+      // Jika mode register ATAU akun belum terdaftar saat login:
+      // JANGAN langsung buat akun, wajib lengkapi Asal (Masyarakat/UII) & Nomor WhatsApp
+      const banner =
+        mode === 'login'
+          ? 'Akun Google ini belum terdaftar. Silakan pilih asal pemohon & isi nomor WhatsApp aktif Anda untuk mendaftar.'
+          : 'Silakan lengkapi asal pemohon (Masyarakat / UII) dan nomor WhatsApp aktif sebelum akun dibuat.';
 
-      setStatusText('Autentikasi Google berhasil!');
-      setAuthStatus('success');
-
-      setTimeout(() => {
-        setAuthStatus('idle');
-        onUserSuccess?.(savedUser || googleUser);
-        onClose();
-      }, 700);
+      openCompleteProfileStep(account, banner);
     } catch (err) {
-      setAuthStatus('error');
-      setErrorMessage('Gagal autentikasi Google: ' + err.message);
+      setAuthStatus('idle');
+      setErrorMessage('Gagal memeriksa akun Google: ' + err.message);
     }
   };
 
-  // Submit Akun Google Kustom (Email Bebas)
-  const handleCustomSubmit = (e) => {
+  // Submit email Google kustom pada Langkah 1
+  const handleCustomEmailStep = (e) => {
     e.preventDefault();
     if (!customEmail.trim() || !customEmail.includes('@')) {
       setErrorMessage('Mohon masukkan alamat email Google / UII yang valid.');
@@ -127,9 +177,6 @@ export const GoogleAuthModal = ({
     }
 
     const emailVal = customEmail.trim().toLowerCase();
-    const isUiiStudent = emailVal.endsWith('@student.uii.ac.id');
-    const isUiiStaff = emailVal.endsWith('@uii.ac.id');
-
     const displayName =
       customName.trim() ||
       emailVal
@@ -137,23 +184,74 @@ export const GoogleAuthModal = ({
         .replace(/[._]/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const account = {
+    handleSelectAccount({
       id: `custom-${Date.now()}`,
       name: displayName,
-      email: emailVal,
-      role: isUiiStudent
-        ? 'Mahasiswa Aktif UII'
-        : isUiiStaff
-        ? 'Organisasi / Lembaga UII'
-        : 'Masyarakat Umum',
-      org: isUiiStudent
-        ? 'Mahasiswa FTI UII (Google Auth)'
-        : isUiiStaff
-        ? 'Civitas Akademika UII'
-        : 'Penyewa Umum (Akun Google)'
-    };
+      email: emailVal
+    });
+  };
 
-    handleSelectAccount(account);
+  // Langkah 2: Finalisasi pembuatan akun setelah mengisi kategori asal & nomor WhatsApp
+  const handleCompleteRegistration = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    if (!regName.trim()) {
+      setErrorMessage('Nama lengkap wajib diisi.');
+      return;
+    }
+
+    const cleanPhone = regPhone.replace(/[^0-9+]/g, '');
+    if (!cleanPhone || cleanPhone.length < 9) {
+      setErrorMessage('Mohon masukkan nomor WhatsApp aktif yang valid (minimal 9 digit angka).');
+      return;
+    }
+
+    const isMasyarakatUmum = regCategory === 'Masyarakat Umum';
+    if (!isMasyarakatUmum && !regOrg.trim()) {
+      setErrorMessage(
+        regCategory === 'Organisasi / Lembaga UII'
+          ? 'Mohon isi nama Ormawa, UKM, atau Lembaga Anda.'
+          : regCategory === 'Mahasiswa Aktif UII'
+          ? 'Mohon isi Fakultas dan Program Studi Anda.'
+          : 'Mohon isi Jurusan dan Angkatan kelulusan Anda.'
+      );
+      return;
+    }
+
+    setAuthStatus('loading');
+    setStatusText('Mendaftarkan akun & menyimpan ke Neon PostgreSQL...');
+
+    try {
+      const googleUser = {
+        id: pendingGoogleAccount?.id || `google-${Date.now()}`,
+        name: regName.trim(),
+        email: pendingGoogleAccount.email,
+        identifier: pendingGoogleAccount.email,
+        picture: pendingGoogleAccount.picture || '',
+        phone: regPhone.trim(),
+        category: regCategory,
+        org: regOrg.trim() || (isMasyarakatUmum ? 'Masyarakat Umum (Personal)' : regCategory),
+        status: 'Aktif',
+        loginAt: new Date().toLocaleString('id-ID'),
+        authProvider: 'google',
+        googleId: pendingGoogleAccount.googleId || `g_${Date.now()}`
+      };
+
+      const savedUser = await saveGoogleUserToNeon(googleUser);
+
+      setStatusText('Akun berhasil dibuat!');
+      setAuthStatus('success');
+
+      setTimeout(() => {
+        setAuthStatus('idle');
+        onUserSuccess?.(savedUser || googleUser);
+        onClose();
+      }, 650);
+    } catch (err) {
+      setAuthStatus('idle');
+      setErrorMessage('Gagal menyimpan akun: ' + err.message);
+    }
   };
 
   // Simpan Google Client ID dan Uji Popup Asli
@@ -169,7 +267,6 @@ export const GoogleAuthModal = ({
     setSaveKeySuccess(true);
     setTimeout(() => setSaveKeySuccess(false), 2500);
 
-    // Jika SDK Google sudah aktif, coba buka popup
     if (window.google?.accounts?.oauth2) {
       try {
         const client = window.google.accounts.oauth2.initTokenClient({
@@ -177,7 +274,9 @@ export const GoogleAuthModal = ({
           scope: 'email profile openid',
           callback: async (tokenResponse) => {
             if (tokenResponse.error) {
-              setErrorMessage('Google OAuth dibatalkan: ' + (tokenResponse.error_description || tokenResponse.error));
+              setErrorMessage(
+                'Google OAuth dibatalkan: ' + (tokenResponse.error_description || tokenResponse.error)
+              );
               return;
             }
             try {
@@ -187,33 +286,33 @@ export const GoogleAuthModal = ({
                 headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
               });
               const profile = await res.json();
-              const isUii = profile.email?.endsWith('@student.uii.ac.id') || profile.email?.endsWith('@uii.ac.id');
 
-              const googleUser = {
-                id: `google-${profile.sub || Date.now()}`,
-                name: profile.name || profile.given_name || 'Pengguna Google',
-                email: profile.email,
-                identifier: profile.email,
-                picture: profile.picture,
-                phone: '081234567890',
-                category: isUii ? 'Mahasiswa Aktif UII' : 'Masyarakat Umum',
-                org: isUii ? 'Universitas Islam Indonesia' : 'Personal (Akun Google)',
-                status: 'Aktif',
-                loginAt: new Date().toLocaleString('id-ID'),
-                authProvider: 'google',
-                googleId: profile.sub
-              };
+              const check = await checkRegisteredUserByEmail(profile.email);
+              if (mode === 'login' && check.exists && check.user) {
+                setAuthStatus('success');
+                setStatusText('Berhasil masuk dengan Google!');
+                setTimeout(() => {
+                  onUserSuccess?.(check.user);
+                  onClose();
+                }, 600);
+                return;
+              }
 
-              const saved = await saveGoogleUserToNeon(googleUser);
-              setAuthStatus('success');
-              setStatusText('Berhasil masuk dengan Google Cloud!');
-              setTimeout(() => {
-                onUserSuccess?.(saved || googleUser);
-                onClose();
-              }, 700);
+              openCompleteProfileStep(
+                {
+                  id: `google-${profile.sub || Date.now()}`,
+                  googleId: profile.sub,
+                  name: profile.name || profile.given_name || 'Pengguna Google',
+                  email: profile.email,
+                  picture: profile.picture || ''
+                },
+                mode === 'login'
+                  ? 'Akun Google Anda belum terdaftar. Lengkapi asal pemohon & nomor WhatsApp untuk membuat akun.'
+                  : 'Satu langkah lagi! Pilih asal pemohon & masukkan nomor WhatsApp aktif Anda.'
+              );
             } catch (err) {
               setErrorMessage('Gagal memproses data Google: ' + err.message);
-              setAuthStatus('error');
+              setAuthStatus('idle');
             }
           }
         });
@@ -246,7 +345,7 @@ export const GoogleAuthModal = ({
           transition={{ duration: 0.2 }}
           className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden z-10 border border-slate-200 my-8"
         >
-          {/* Header Bergaya Resmi Google */}
+          {/* Header */}
           <div className="p-6 sm:p-7 border-b border-slate-100 relative bg-white">
             <button
               onClick={onClose}
@@ -256,7 +355,6 @@ export const GoogleAuthModal = ({
               <X className="w-5 h-5" />
             </button>
 
-            {/* Logo Google Asli */}
             <div className="flex items-center space-x-3.5 mb-3">
               <div className="w-11 h-11 rounded-2xl bg-white shadow-sm border border-slate-200/80 flex items-center justify-center p-2">
                 <svg className="w-full h-full" viewBox="0 0 24 24">
@@ -280,23 +378,27 @@ export const GoogleAuthModal = ({
               </div>
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-uii-blue-900 bg-blue-50 px-2 py-0.5 rounded-md inline-block mb-0.5">
-                  Google Identity Services
+                  {step === 'complete-profile' ? 'Langkah 2 dari 2 • Lengkapi Profil' : 'Google Identity Services'}
                 </span>
                 <h3 className="text-lg font-black text-slate-900 font-heading">
-                  {mode === 'register' ? 'Daftar dengan Akun Google' : 'Login dengan Akun Google'}
+                  {step === 'complete-profile'
+                    ? 'Lengkapi Data Pendaftaran'
+                    : mode === 'register'
+                    ? 'Daftar dengan Akun Google'
+                    : 'Login dengan Akun Google'}
                 </h3>
               </div>
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Pilih akun Google Anda untuk melanjutkan ke portal layanan{' '}
-              <span className="font-bold text-uii-blue-950">BPA KM UII (fti.uii.ac.id)</span>.
+              {step === 'complete-profile'
+                ? 'Isi kategori asal pemohon (Masyarakat / UII) dan nomor WhatsApp aktif Anda sebelum akun dibuat.'
+                : 'Pilih akun Google Anda untuk melanjutkan ke portal layanan BPA KM UII.'}
             </p>
           </div>
 
           {/* Modal Body */}
           <div className="p-6 sm:p-7 space-y-4 max-h-[68vh] overflow-y-auto">
-            {/* Error Message Alert */}
             {errorMessage && (
               <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center space-x-2">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
@@ -304,7 +406,6 @@ export const GoogleAuthModal = ({
               </div>
             )}
 
-            {/* Loading / Authenticating State */}
             {authStatus === 'loading' && (
               <div className="py-10 text-center space-y-4">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-50 border-2 border-blue-200 relative">
@@ -312,14 +413,13 @@ export const GoogleAuthModal = ({
                 </div>
                 <div>
                   <h4 className="text-sm font-black text-slate-900 font-heading">
-                    Memproses Autentikasi...
+                    Memproses...
                   </h4>
                   <p className="text-xs text-slate-500 mt-1">{statusText}</p>
                 </div>
               </div>
             )}
 
-            {/* Success State */}
             {authStatus === 'success' && (
               <div className="py-8 text-center space-y-3">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 shadow-md">
@@ -327,25 +427,24 @@ export const GoogleAuthModal = ({
                 </div>
                 <div>
                   <h4 className="text-base font-black text-slate-900 font-heading">
-                    Berhasil Terhubung!
+                    Berhasil!
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">{statusText}</p>
                 </div>
               </div>
             )}
 
-            {/* Normal Account Chooser View */}
-            {authStatus === 'idle' && (
+            {/* STEP 1: PILIH AKUN GOOGLE */}
+            {authStatus === 'idle' && step === 'choose' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider pb-1">
-                  <span>Pilih Akun Terhubung:</span>
+                  <span>Pilih Akun Google:</span>
                   <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1 font-semibold">
                     <Database className="w-3 h-3 text-emerald-600" />
-                    Neon PostgreSQL Ready
+                    Neon PostgreSQL
                   </span>
                 </div>
 
-                {/* List Preset Accounts */}
                 <div className="space-y-2">
                   {PRESET_ACCOUNTS.map((acc) => (
                     <button
@@ -354,7 +453,6 @@ export const GoogleAuthModal = ({
                       className="w-full p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 transition-all flex items-center justify-between group text-left cursor-pointer shadow-2xs hover:shadow-sm"
                     >
                       <div className="flex items-center space-x-3.5 min-w-0">
-                        {/* Avatar Initial */}
                         <div
                           className={`w-10 h-10 rounded-full ${acc.avatarBg} text-white font-black text-xs flex items-center justify-center shadow-xs flex-shrink-0 group-hover:scale-105 transition-transform`}
                         >
@@ -368,14 +466,11 @@ export const GoogleAuthModal = ({
                             <span
                               className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${acc.badgeColor} uppercase tracking-wider flex-shrink-0`}
                             >
-                              {acc.role}
+                              {acc.suggestedCategory}
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 truncate mt-0.5">
                             {acc.email}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-medium">
-                            {acc.org}
                           </p>
                         </div>
                       </div>
@@ -397,7 +492,7 @@ export const GoogleAuthModal = ({
                     </button>
                   ) : (
                     <form
-                      onSubmit={handleCustomSubmit}
+                      onSubmit={handleCustomEmailStep}
                       className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 mt-1"
                     >
                       <div className="flex items-center justify-between">
@@ -419,7 +514,7 @@ export const GoogleAuthModal = ({
                           required
                           value={customEmail}
                           onChange={(e) => setCustomEmail(e.target.value)}
-                          placeholder="nama@student.uii.ac.id atau @gmail.com"
+                          placeholder="nama@gmail.com atau @student.uii.ac.id"
                           className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-uii-blue-900"
                         />
                       </div>
@@ -438,8 +533,8 @@ export const GoogleAuthModal = ({
                         type="submit"
                         className="w-full py-2.5 px-4 rounded-xl bg-uii-blue-950 hover:bg-uii-blue-900 text-uii-gold font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all shadow-sm"
                       >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Masuk dengan Email Ini</span>
+                        <span>Lanjutkan</span>
+                        <ArrowRight className="w-4 h-4" />
                       </button>
                     </form>
                   )}
@@ -465,48 +560,174 @@ export const GoogleAuthModal = ({
                         Jika Anda ingin memunculkan jendela <em>popup</em> resmi Google (<code>accounts.google.com</code>), tempelkan <strong>OAuth Web Client ID</strong> di bawah ini:
                       </p>
 
-                      <div className="space-y-1.5">
-                        <input
-                          type="text"
-                          value={customClientIdInput}
-                          onChange={(e) => setCustomClientIdInput(e.target.value)}
-                          placeholder="xxxx.apps.googleusercontent.com"
-                          className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 font-mono text-[11px] text-slate-800"
-                        />
-                      </div>
+                      <input
+                        type="text"
+                        value={customClientIdInput}
+                        onChange={(e) => setCustomClientIdInput(e.target.value)}
+                        placeholder="xxxx.apps.googleusercontent.com"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 font-mono text-[11px] text-slate-800"
+                      />
 
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSaveAndTestClientId}
-                          className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors"
-                        >
-                          {saveKeySuccess ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Tersimpan! Membuka...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Simpan & Buka Popup Google</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="text-[10px] text-slate-500 space-y-0.5 pt-1">
-                        <p>
-                          • Authorized JavaScript Origin: <code className="bg-white px-1 rounded font-bold">http://localhost:3000</code>
-                        </p>
-                        <p>
-                          • Authorized Redirect URI: <code className="bg-white px-1 rounded font-bold">http://localhost:3000</code>
-                        </p>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSaveAndTestClientId}
+                        className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors"
+                      >
+                        {saveKeySuccess ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Tersimpan! Membuka...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Simpan & Buka Popup Google</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
+            )}
+
+            {/* STEP 2: LENGKAPI DATA ASAL (MASYARAKAT / UII) & NOMOR WHATSAPP */}
+            {authStatus === 'idle' && step === 'complete-profile' && pendingGoogleAccount && (
+              <form onSubmit={handleCompleteRegistration} className="space-y-4">
+                {infoBanner && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold leading-relaxed">
+                    {infoBanner}
+                  </div>
+                )}
+
+                {/* Info Akun Google Terpilih */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Email Google Terhubung
+                    </span>
+                    <span className="text-xs font-black text-slate-900 truncate block">
+                      {pendingGoogleAccount.email}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('choose');
+                      setErrorMessage('');
+                    }}
+                    className="text-[11px] font-bold text-uii-blue-900 hover:underline flex items-center gap-1 flex-shrink-0"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    <span>Ganti Akun</span>
+                  </button>
+                </div>
+
+                {/* Nama Lengkap */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Nama Lengkap: *
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      value={regName}
+                      onChange={(e) => setRegName(e.target.value)}
+                      placeholder="Masukkan nama lengkap Anda"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-uii-blue-900"
+                    />
+                  </div>
+                </div>
+
+                {/* Kategori Asal (Masyarakat Umum / Mahasiswa UII / Ormawa / Alumni) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Jenis Akun / Asal Pemohon: *
+                  </label>
+                  <select
+                    value={regCategory}
+                    onChange={(e) => setRegCategory(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-uii-blue-900 cursor-pointer"
+                  >
+                    <option value="Masyarakat Umum">Masyarakat Umum</option>
+                    <option value="Mahasiswa Aktif UII">Mahasiswa Aktif UII</option>
+                    <option value="Organisasi / Lembaga UII">Organisasi / Lembaga UII</option>
+                    <option value="Alumni UII">Alumni UII</option>
+                  </select>
+                </div>
+
+                {/* Asal Instansi / Fakultas / Ormawa */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {regCategory === 'Masyarakat Umum' ? (
+                      <span>
+                        Asal Masyarakat / Instansi{' '}
+                        <span className="text-slate-400 font-normal lowercase">(opsional)</span>:
+                      </span>
+                    ) : (
+                      <span>
+                        Asal{' '}
+                        {regCategory === 'Organisasi / Lembaga UII'
+                          ? 'Ormawa / Lembaga'
+                          : regCategory === 'Mahasiswa Aktif UII'
+                          ? 'Fakultas / Prodi'
+                          : 'Jurusan & Angkatan'}
+                        : *
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required={regCategory !== 'Masyarakat Umum'}
+                      value={regOrg}
+                      onChange={(e) => setRegOrg(e.target.value)}
+                      placeholder={
+                        regCategory === 'Masyarakat Umum'
+                          ? 'Contoh: Yogyakarta / Nama Instansi / Personal'
+                          : regCategory === 'Organisasi / Lembaga UII'
+                          ? 'Contoh: BEM FTI / DEMA / UKM'
+                          : regCategory === 'Mahasiswa Aktif UII'
+                          ? 'Contoh: Informatika FTI UII'
+                          : 'Contoh: Alumni Arsitektur 2020'
+                      }
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-uii-blue-900"
+                    />
+                  </div>
+                </div>
+
+                {/* Nomor WhatsApp Aktif (Wajib) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    No. WhatsApp Aktif: *
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      required
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      placeholder="Contoh: 081234567890"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-uii-blue-900"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Wajib diisi untuk menerima konfirmasi persetujuan sewa dari staf BPA.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-uii-blue-950 hover:bg-uii-blue-900 text-uii-gold font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-md"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Buat Akun & Masuk</span>
+                </button>
+              </form>
             )}
           </div>
 

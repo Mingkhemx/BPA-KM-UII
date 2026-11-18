@@ -17,43 +17,69 @@ import {
   ChevronRight,
   ArrowLeft,
   Share2,
-  Printer,
   Sliders,
   Image as ImageIcon,
   MessageSquare,
   RefreshCw,
   PlusCircle,
   XCircle,
+  X,
   ExternalLink,
   Info
 } from 'lucide-react';
 import {
-  getStoredTrackingBookings,
-  saveStoredTrackingBookings
+  getAllMergedTrackingBookings,
+  saveStoredTrackingBookings,
+  formatWhatsAppNumber
 } from '../data/trackingData';
+import { neonApi } from '../services/neonDb';
+
+const findBookingByCode = (list, rawCode) => {
+  if (!Array.isArray(list)) return null;
+  const raw = String(rawCode || '').trim();
+  if (!raw) return null;
+
+  // 1. Exact match (case insensitive & hapus tanda #)
+  const clean = raw.replace(/^#/, '').trim().toLowerCase();
+  const exact = list.find((b) => String(b.bookingCode || '').trim().toLowerCase() === clean);
+  if (exact) return exact;
+
+  // 2. Prefix 'bpa-' match (jika user ketik '01' atau '157')
+  const withPrefix = list.find((b) => String(b.bookingCode || '').trim().toLowerCase() === `bpa-${clean}`);
+  if (withPrefix) return withPrefix;
+
+  // 3. Numeric match: mendukung ketikan angka seperti '1', '01', 'bpa-1', '#1'
+  const numericPart = clean.replace(/^bpa-/i, '').trim();
+  const numInput = parseInt(numericPart, 10);
+  if (!isNaN(numInput)) {
+    const numericMatch = list.find((b) => {
+      const bCode = String(b.bookingCode || '').trim().toLowerCase();
+      const bNumeric = parseInt(bCode.replace(/^bpa-/i, '').trim(), 10);
+      return !isNaN(bNumeric) && bNumeric === numInput;
+    });
+    if (numericMatch) return numericMatch;
+  }
+
+  return null;
+};
 
 export const TrackingPage = ({
   onBackHome,
   onNavigateSewa,
   initialBookingCode = '',
-  activeBooking = null
+  resetKey = 0
 }) => {
-  // Database Booking Tracking
-  const [allBookings, setAllBookings] = useState(() => getStoredTrackingBookings());
+  // Database Booking Tracking (Gabungan Tracking & Admin Storage)
+  const [allBookings, setAllBookings] = useState(() => getAllMergedTrackingBookings());
   
-  // Kode Booking yang sedang dicari/dilihat
-  const [searchCode, setSearchCode] = useState(() => {
-    if (initialBookingCode) return initialBookingCode;
-    if (activeBooking?.bookingCode) return activeBooking.bookingCode;
-    return 'BPA-20261102-7492';
-  });
+  // Kode Booking yang sedang dicari/dilihat (Kosong untuk user agar mengisi sendiri)
+  const [searchCode, setSearchCode] = useState(() => initialBookingCode || '');
 
-  // Booking yang saat ini aktif ditampilkan
+  // Booking yang saat ini aktif ditampilkan (Null jika user belum memasukkan kode)
   const [currentBooking, setCurrentBooking] = useState(() => {
-    const list = getStoredTrackingBookings();
-    const code = initialBookingCode || activeBooking?.bookingCode || 'BPA-20261102-7492';
-    const found = list.find(b => b.bookingCode.toLowerCase() === code.toLowerCase());
-    return found || list[0] || null;
+    if (!initialBookingCode) return null;
+    const list = getAllMergedTrackingBookings();
+    return findBookingByCode(list, initialBookingCode);
   });
 
   // State Mode Staf BPA (Untuk Mengirimkan Update & Persentase)
@@ -77,7 +103,56 @@ export const TrackingPage = ({
     { label: 'Gedung SCC Tampak Depan', url: '/images/produk/gedung-scc.png' }
   ];
 
-  // Sinkronisasi saat searchCode atau list berubah
+  // Sinkronisasi data terbaru dari Neon PostgreSQL di latar belakang
+  useEffect(() => {
+    let mounted = true;
+    neonApi.getBookings().then((remote) => {
+      if (!mounted || !Array.isArray(remote)) return;
+      const merged = getAllMergedTrackingBookings(remote);
+      setAllBookings(merged);
+      setCurrentBooking((prev) => {
+        if (!prev?.bookingCode) return prev;
+        return findBookingByCode(merged, prev.bookingCode) || null;
+      });
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Sinkronisasi otomatis real-time saat staf mengunggah pembaruan progres & foto
+  useEffect(() => {
+    const handleSync = () => {
+      const list = getAllMergedTrackingBookings();
+      setAllBookings(list);
+      setCurrentBooking((prev) => {
+        if (!prev?.bookingCode) return prev;
+        return findBookingByCode(list, prev.bookingCode) || prev;
+      });
+    };
+
+    window.addEventListener('bpa-data-updated', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('bpa-data-updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
+  // Reset / Sinkronisasi jika navigasi ke Lacak membawa kode baru atau resetKey berubah
+  useEffect(() => {
+    if (initialBookingCode) {
+      const list = getAllMergedTrackingBookings();
+      setAllBookings(list);
+      setSearchCode(initialBookingCode);
+      setCurrentBooking(findBookingByCode(list, initialBookingCode));
+    } else {
+      setSearchCode('');
+      setCurrentBooking(null);
+    }
+  }, [initialBookingCode, resetKey]);
+
+  // Sinkronisasi saat currentBooking berubah
   useEffect(() => {
     if (currentBooking) {
       setStaffFormPercent(currentBooking.progressPercent || 0);
@@ -86,25 +161,39 @@ export const TrackingPage = ({
     }
   }, [currentBooking]);
 
-  const handleSearch = (e) => {
+  const handleSearch = async (e) => {
     e?.preventDefault();
-    const clean = searchCode.trim().toLowerCase();
-    const found = allBookings.find(b => b.bookingCode.toLowerCase() === clean);
+    const cleanInput = searchCode.trim().replace(/^#/, '');
+    if (!cleanInput) {
+      setCurrentBooking(null);
+      showToast('Silakan masukkan ID sewa Anda terlebih dahulu.', 'error');
+      return;
+    }
+
+    let latestList = getAllMergedTrackingBookings();
+    let found = findBookingByCode(latestList, cleanInput);
+
+    if (!found) {
+      const remote = await neonApi.getBookings().catch(() => null);
+      if (Array.isArray(remote)) {
+        latestList = getAllMergedTrackingBookings(remote);
+        setAllBookings(latestList);
+        found = findBookingByCode(latestList, cleanInput);
+      }
+    }
+
     if (found) {
       setCurrentBooking(found);
       showToast(`Data sewa #${found.bookingCode} berhasil ditemukan!`);
     } else {
-      showToast(`Kode "${searchCode}" tidak ditemukan. Silakan cek nomor registrasi Anda.`, 'error');
+      setCurrentBooking(null);
+      showToast(`ID "${searchCode.trim()}" tidak ditemukan. Silakan periksa kembali kode sewa Anda.`, 'error');
     }
   };
 
-  const handleSelectQuickCode = (code) => {
-    setSearchCode(code);
-    const found = allBookings.find(b => b.bookingCode.toLowerCase() === code.toLowerCase());
-    if (found) {
-      setCurrentBooking(found);
-      showToast(`Memuat data sewa #${found.bookingCode}`);
-    }
+  const handleClearSearch = () => {
+    setSearchCode('');
+    setCurrentBooking(null);
   };
 
   const showToast = (msg, type = 'success') => {
@@ -165,6 +254,7 @@ export const TrackingPage = ({
     setAllBookings(updatedAll);
     setCurrentBooking(updatedBooking);
     saveStoredTrackingBookings(updatedAll);
+    neonApi.saveBooking(updatedBooking).catch(() => {});
 
     // Reset formulir input update
     setStaffUpdateTitle('');
@@ -209,12 +299,14 @@ export const TrackingPage = ({
     window.open(targetUrl, '_blank');
   };
 
-  // Helper User Menghubungi WhatsApp PIC Staf
+  // Helper User Menghubungi WhatsApp PIC Staf Penanggung Jawab
   const handleChatStaffPIC = () => {
     if (!currentBooking) return;
-    const staffPhone = currentBooking.picStaff?.phone || '6285233475595';
-    let msg = `Halo ${currentBooking.picStaff?.name || 'Staf BPA KM UII'}, saya ${currentBooking.customer?.name} pemesan sewa aset dengan Kode: *#${currentBooking.bookingCode}*.\n\n`;
-    msg += `Saya melihat progres persiapan di website BPA saat ini sudah *${currentBooking.progressPercent}%* (${currentBooking.status}). Ingin menanyakan koordinasi teknis terkait persiapan acara kami pada ${currentBooking.eventDate}. Terima kasih!`;
+    const rawPhone = currentBooking.picStaff?.phone || '6285233475595';
+    const staffPhone = formatWhatsAppNumber(rawPhone);
+    const staffName = currentBooking.picStaff?.name || 'Staf BPA KM UII';
+    let msg = `Halo ${staffName}, saya ${currentBooking.customer?.name || 'Pemesan'} pemesan sewa aset dengan Kode: *#${currentBooking.bookingCode}*.\n\n`;
+    msg += `Saya melihat progres persiapan di website BPA saat ini sudah *${effectiveProgressPercent}%* (${currentBooking.status}). Ingin menanyakan koordinasi teknis terkait persiapan acara kami pada ${currentBooking.eventDate}. Terima kasih!`;
 
     window.open(`https://wa.me/${staffPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -263,6 +355,24 @@ export const TrackingPage = ({
   const statusMeta = currentBooking ? getStatusBadge(currentBooking.status) : getStatusBadge('SEDANG DISIAPKAN');
   const StatusIcon = statusMeta.icon;
 
+  // Persentase kesiapan: jika masih tahap Pengajuan (MENUNGGU PERSETUJUAN), progres penyiapan adalah 0%
+  const isPendingApproval = (currentBooking?.status || '').toUpperCase() === 'MENUNGGU PERSETUJUAN';
+  const effectiveProgressPercent = isPendingApproval
+    ? 0
+    : Math.max(0, Math.min(100, Number(currentBooking?.progressPercent ?? 0)));
+
+  // Petakan persentase ke posisi visual 6 kolom tahapan agar bar tepat berada di tahap aktif (tidak melebihi label tahap)
+  const getStageAlignedBarWidth = (pct) => {
+    if (pct <= 0) return 0;
+    if (pct >= 100) return 100;
+    if (pct < 25) return (pct / 25) * 16.67;
+    if (pct < 50) return 25 + ((pct - 25) / 25) * (33.33 - 25);
+    if (pct < 75) return 41.67 + ((pct - 50) / 25) * (50 - 41.67);
+    if (pct < 90) return 58.33 + ((pct - 75) / 15) * (66.67 - 58.33);
+    return 75 + ((pct - 90) / 10) * (83.33 - 75);
+  };
+  const stageAlignedBarWidth = getStageAlignedBarWidth(effectiveProgressPercent);
+
   return (
     <div className="min-h-screen bg-slate-50 pt-24 sm:pt-28 pb-20 selection:bg-uii-blue-900 selection:text-uii-gold">
       
@@ -305,30 +415,6 @@ export const TrackingPage = ({
             <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-uii-blue-950 font-black">Pelacakan Progres Sewa</span>
           </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => window.print()}
-              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-colors"
-              title="Cetak Bukti Pelacakan"
-            >
-              <Printer className="w-3.5 h-3.5 text-slate-600" />
-              <span className="hidden sm:inline">Cetak Dokumen</span>
-            </button>
-
-            {/* Toggle Panel Khusus Staf BPA */}
-            <button
-              onClick={() => setIsStaffPanelOpen(!isStaffPanelOpen)}
-              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center space-x-2 border transition-all ${
-                isStaffPanelOpen
-                  ? 'bg-amber-400 text-uii-blue-950 border-amber-500 shadow-sm'
-                  : 'bg-uii-blue-950 text-white border-uii-gold/50 hover:border-uii-gold'
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5 text-uii-gold" />
-              <span>{isStaffPanelOpen ? 'Tutup Mode Staf BPA' : '🛠️ Mode Staf BPA (Kirim Progres)'}</span>
-            </button>
-          </div>
         </div>
 
         {/* HERO HEADER: PENCARIAN & IDENTITAS PELACAKAN */}
@@ -356,9 +442,20 @@ export const TrackingPage = ({
                   type="text"
                   value={searchCode}
                   onChange={(e) => setSearchCode(e.target.value)}
-                  placeholder="Masukkan Nomor Registrasi Sewa (Contoh: BPA-20261102-7492)"
-                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white text-slate-900 text-xs sm:text-sm font-bold placeholder-slate-400 border border-transparent focus:outline-none focus:ring-2 focus:ring-uii-gold shadow-lg"
+                  placeholder="Masukkan ID Sewa Anda (Contoh: BPA-01)"
+                  className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-white text-slate-900 text-xs sm:text-sm font-bold placeholder-slate-400 border border-transparent focus:outline-none focus:ring-2 focus:ring-uii-gold shadow-lg"
                 />
+                {searchCode && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    title="Bersihkan Pencarian"
+                    aria-label="Bersihkan Pencarian"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               <button
                 type="submit"
@@ -618,6 +715,11 @@ export const TrackingPage = ({
                   <h2 className="text-xl sm:text-2xl font-black text-uii-blue-950 font-heading">
                     {currentBooking.progressStage || 'Sedang Dalam Proses Penyiapan Lapangan'}
                   </h2>
+                  {currentBooking.progressDescription && (
+                    <p className="text-xs text-slate-600 mt-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 font-medium leading-relaxed">
+                      <strong className="text-uii-blue-950">Catatan Progres Staf:</strong> {currentBooking.progressDescription}
+                    </p>
+                  )}
                   <p className="text-xs text-slate-500 mt-1">
                     Waktu Pengajuan: <strong>{currentBooking.createdAt}</strong> • Diperbarui Real-time
                   </p>
@@ -643,7 +745,7 @@ export const TrackingPage = ({
                   <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center rounded-3xl bg-gradient-to-br from-uii-blue-950 to-uii-blue-900 text-white shadow-xl flex-shrink-0 border-2 border-uii-gold/40">
                     <div className="text-center">
                       <span className="text-3xl sm:text-4xl font-black text-uii-gold font-heading tracking-tight block">
-                        {currentBooking.progressPercent}%
+                        {effectiveProgressPercent}%
                       </span>
                       <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
                         Kesiapan
@@ -656,13 +758,13 @@ export const TrackingPage = ({
                       Tingkat Kesiapan Aset
                     </span>
                     <h3 className="text-base sm:text-lg font-black text-uii-blue-950 font-heading">
-                      {currentBooking.progressPercent >= 100
+                      {effectiveProgressPercent >= 100
                         ? 'Semua Aset 100% Siap'
-                        : currentBooking.progressPercent >= 75
+                        : effectiveProgressPercent >= 75
                         ? 'Tahap Akhir / Final Setup'
-                        : currentBooking.progressPercent >= 50
+                        : effectiveProgressPercent >= 50
                         ? 'Pengujian Teknis Sedang Berjalan'
-                        : currentBooking.progressPercent >= 25
+                        : effectiveProgressPercent >= 25
                         ? 'Persetujuan Terbit, Masuk Antrean'
                         : 'Menunggu Verifikasi Staf'}
                     </h3>
@@ -676,30 +778,43 @@ export const TrackingPage = ({
                 <div className="md:col-span-8 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold">
                     <span className="text-slate-600">Progres Penyiapan Sarpras oleh Tim BPA</span>
-                    <span className="text-uii-blue-950 font-black">{currentBooking.progressPercent}% dari 100%</span>
+                    <span className="text-uii-blue-950 font-black">{effectiveProgressPercent}% dari 100%</span>
                   </div>
 
                   {/* Horizontal Bar (Satu Warna Solid Rapi Sesuai Permintaan Pengguna) */}
                   <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${currentBooking.progressPercent}%` }}
+                      animate={{ width: `${stageAlignedBarWidth}%` }}
                       transition={{ duration: 0.8, ease: 'easeOut' }}
                       className={`h-full rounded-full transition-all ${
-                        currentBooking.progressPercent === 100
+                        effectiveProgressPercent === 100
                           ? 'bg-emerald-600'
                           : 'bg-uii-blue-900'
                       }`}
                     />
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                    <span>1. Pengajuan</span>
-                    <span>2. Approval</span>
-                    <span>3. DP</span>
-                    <span>4. Cek Fisik</span>
-                    <span>5. Setting</span>
-                    <span className="font-bold text-emerald-600">6. Ready</span>
+                  {/* Tahapan Milestone: Ditandai secara dinamis sesuai progres aktif */}
+                  <div className="grid grid-cols-6 gap-1 items-start text-center text-[10px] sm:text-[11px] pt-1 select-none leading-tight">
+                    <span className={effectiveProgressPercent < 25 ? 'font-black text-uii-blue-950 underline decoration-uii-gold decoration-2 underline-offset-4' : 'font-bold text-emerald-700'}>
+                      {effectiveProgressPercent >= 25 ? '✓ 1. Pengajuan' : '1. Pengajuan'}
+                    </span>
+                    <span className={effectiveProgressPercent >= 25 && effectiveProgressPercent < 50 ? 'font-black text-uii-blue-950 underline decoration-uii-gold decoration-2 underline-offset-4' : effectiveProgressPercent >= 50 ? 'font-bold text-emerald-700' : 'text-slate-400'}>
+                      {effectiveProgressPercent >= 50 ? '✓ 2. Approval' : '2. Approval'}
+                    </span>
+                    <span className={effectiveProgressPercent >= 50 && effectiveProgressPercent < 75 ? 'font-black text-uii-blue-950 underline decoration-uii-gold decoration-2 underline-offset-4' : effectiveProgressPercent >= 75 ? 'font-bold text-emerald-700' : 'text-slate-400'}>
+                      {effectiveProgressPercent >= 75 ? '✓ 3. DP' : '3. DP'}
+                    </span>
+                    <span className={effectiveProgressPercent >= 75 && effectiveProgressPercent < 90 ? 'font-black text-uii-blue-950 underline decoration-uii-gold decoration-2 underline-offset-4' : effectiveProgressPercent >= 90 ? 'font-bold text-emerald-700' : 'text-slate-400'}>
+                      {effectiveProgressPercent >= 90 ? '✓ 4. Cek Fisik' : '4. Cek Fisik'}
+                    </span>
+                    <span className={effectiveProgressPercent >= 90 && effectiveProgressPercent < 100 ? 'font-black text-uii-blue-950 underline decoration-uii-gold decoration-2 underline-offset-4' : effectiveProgressPercent >= 100 ? 'font-bold text-emerald-700' : 'text-slate-400'}>
+                      {effectiveProgressPercent >= 100 ? '✓ 5. Setting' : '5. Setting'}
+                    </span>
+                    <span className={effectiveProgressPercent >= 100 ? 'font-black text-emerald-600' : 'text-slate-400'}>
+                      6. Ready
+                    </span>
                   </div>
                 </div>
 
@@ -949,23 +1064,41 @@ export const TrackingPage = ({
 
                 {/* Kartu PIC Staf BPA Penanggung Jawab */}
                 <div className="bg-gradient-to-br from-uii-blue-950 to-uii-blue-900 text-white rounded-3xl p-6 shadow-xl border border-uii-gold/30 space-y-4">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-uii-gold block">
-                    Penanggung Jawab Aset (PIC BPA)
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-uii-gold block">
+                      Penanggung Jawab Aset (PIC BPA)
+                    </span>
+                    {currentBooking.picStaff?.name && (
+                      <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400/30 flex items-center gap-1">
+                        <ShieldCheck className="w-2.5 h-2.5" />
+                        <span>PIC Terverifikasi</span>
+                      </span>
+                    )}
+                  </div>
 
                   <div className="flex items-center space-x-3.5">
                     <img
-                      src={currentBooking.picStaff?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                      alt={currentBooking.picStaff?.name}
-                      className="w-12 h-12 rounded-2xl object-cover border-2 border-uii-gold"
+                      src={
+                        currentBooking.picStaff?.avatar ||
+                        currentBooking.picStaff?.picture ||
+                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+                      }
+                      alt={currentBooking.picStaff?.name || 'Staf PIC BPA'}
+                      className="w-12 h-12 rounded-2xl object-cover border-2 border-uii-gold bg-slate-800 flex-shrink-0"
                     />
-                    <div>
-                      <h4 className="text-sm font-black text-white font-heading">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-black text-white font-heading truncate">
                         {currentBooking.picStaff?.name || 'Fathur Rahman, S.T.'}
                       </h4>
-                      <p className="text-[11px] text-slate-300">
+                      <p className="text-[11px] text-slate-300 truncate">
                         {currentBooking.picStaff?.role || 'Koordinator Sarpras BPA KM UII'}
                       </p>
+                      {currentBooking.picStaff?.phone && (
+                        <p className="text-[10px] text-uii-gold font-bold mt-0.5 flex items-center gap-1">
+                          <span>WhatsApp:</span>
+                          <span className="underline decoration-uii-gold/60">{currentBooking.picStaff.phone}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -976,7 +1109,7 @@ export const TrackingPage = ({
                   <div className="pt-2">
                     <button
                       onClick={handleChatStaffPIC}
-                      className="w-full py-3 px-4 rounded-xl bg-uii-gold hover:bg-yellow-400 text-uii-blue-950 font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 shadow-md"
+                      className="w-full py-3 px-4 rounded-xl bg-uii-gold hover:bg-yellow-400 text-uii-blue-950 font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 shadow-md cursor-pointer"
                     >
                       <PhoneCall className="w-4 h-4" />
                       <span>Hubungi PIC via WhatsApp</span>
@@ -1004,15 +1137,15 @@ export const TrackingPage = ({
           </div>
         ) : (
           /* Empty State Jika Belum Memasukkan Kode */
-          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 max-w-xl mx-auto shadow-sm space-y-4">
+          <div className="bg-white rounded-3xl p-10 sm:p-12 text-center border border-slate-200 max-w-xl mx-auto shadow-sm space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
               <Search className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-black text-uii-blue-950 font-heading">
-              Masukkan Nomor Registrasi Sewa
+              Masukkan ID Sewa Anda
             </h3>
-            <p className="text-xs text-slate-500">
-              Silakan ketik nomor booking yang Anda dapatkan setelah mengajukan sewa (contoh: <strong>BPA-20261102-7492</strong>) pada kolom pencarian di atas.
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Silakan ketik ID singkat yang Anda dapatkan setelah mengajukan sewa (contoh: <strong className="text-uii-blue-950 font-mono">BPA-01</strong>) pada kolom pencarian di atas untuk memantau masing-masing pesanan Anda.
             </p>
           </div>
         )}

@@ -42,7 +42,7 @@ export const neonApi = {
 
   updateUserStatus: async (userId, data) => {
     try {
-      const res = await fetch(`/api/users/${userId}`, {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -51,6 +51,19 @@ export const neonApi = {
       return await res.json();
     } catch (err) {
       console.warn('Update user in Neon error:', err);
+      return null;
+    }
+  },
+
+  deleteUser: async (userId) => {
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete user in Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Delete user in Neon error:', err);
       return null;
     }
   },
@@ -151,7 +164,49 @@ export const neonApi = {
     }
   },
 
-  // 6. Articles
+  saveTestimonials: async (testimonials) => {
+    try {
+      const res = await fetch('/api/testimonials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testimonials)
+      });
+      if (!res.ok) throw new Error('Failed to sync testimonials to Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Sync testimonials to Neon error:', err);
+      return null;
+    }
+  },
+
+  // 6. Products
+  getProducts: async () => {
+    try {
+      const res = await fetch('/api/products');
+      if (!res.ok) throw new Error('Failed to fetch products');
+      return await res.json();
+    } catch (err) {
+      console.warn('Fetch products from Neon error:', err);
+      return null;
+    }
+  },
+
+  saveProducts: async (products) => {
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(products)
+      });
+      if (!res.ok) throw new Error('Failed to sync products to Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Sync products to Neon error:', err);
+      return null;
+    }
+  },
+
+  // 7. Articles
   getArticles: async () => {
     try {
       const res = await fetch('/api/articles');
@@ -174,6 +229,102 @@ export const neonApi = {
       return await res.json();
     } catch (err) {
       console.warn('Save article to Neon error:', err);
+      return null;
+    }
+  },
+
+  saveArticles: async (articles) => {
+    try {
+      const res = await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(articles)
+      });
+      if (!res.ok) throw new Error('Failed to sync articles to Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Sync articles to Neon error:', err);
+      return null;
+    }
+  },
+
+  // 8. Investor Team
+  getTeam: async () => {
+    try {
+      const res = await fetch('/api/team');
+      if (!res.ok) throw new Error('Failed to fetch team');
+      return await res.json();
+    } catch (err) {
+      console.warn('Fetch team from Neon error:', err);
+      return null;
+    }
+  },
+
+  saveTeam: async (team) => {
+    try {
+      const res = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(team)
+      });
+      if (!res.ok) throw new Error('Failed to sync team to Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Sync team to Neon error:', err);
+      return null;
+    }
+  },
+
+  // 9. Investor Documents
+  getDocuments: async () => {
+    try {
+      const res = await fetch('/api/documents');
+      if (!res.ok) throw new Error('Failed to fetch documents');
+      return await res.json();
+    } catch (err) {
+      console.warn('Fetch documents from Neon error:', err);
+      return null;
+    }
+  },
+
+  saveDocuments: async (documents) => {
+    try {
+      const res = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(documents)
+      });
+      if (!res.ok) throw new Error('Failed to sync documents to Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Sync documents to Neon error:', err);
+      return null;
+    }
+  },
+
+  // 10. Gallery
+  getGallery: async () => {
+    try {
+      const res = await fetch('/api/gallery');
+      if (!res.ok) throw new Error('Failed to fetch gallery');
+      return await res.json();
+    } catch (err) {
+      console.warn('Fetch gallery from Neon error:', err);
+      return null;
+    }
+  },
+
+  saveGallery: async (gallery) => {
+    try {
+      const res = await fetch('/api/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gallery)
+      });
+      if (!res.ok) throw new Error('Failed to sync gallery to Neon');
+      return await res.json();
+    } catch (err) {
+      console.warn('Sync gallery to Neon error:', err);
       return null;
     }
   }

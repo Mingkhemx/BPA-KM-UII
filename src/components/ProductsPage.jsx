@@ -1,25 +1,30 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Search, 
-  Tag, 
-  MessageCircle, 
-  CheckCircle2, 
-  Filter, 
   Home, 
+  Search, 
   Building2, 
   Volume2, 
-  Radio, 
   Shirt, 
-  Tent, 
   Laptop, 
-  Megaphone,
-  CalendarCheck
+  CalendarCheck,
+  Package
 } from 'lucide-react';
-import { siteData } from '../data/siteData';
+import { adminStorage } from '../utils/adminStorage';
 
 export const ProductsPage = ({ onBackHome, onOpenDetail, onNavigateSewa, currentUser, onNavigateAuth }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
+  const [allProducts, setAllProducts] = useState(() => adminStorage.getProducts());
+
+  useEffect(() => {
+    const syncProducts = () => setAllProducts(adminStorage.getProducts());
+    window.addEventListener('bpa-data-updated', syncProducts);
+    window.addEventListener('storage', syncProducts);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncProducts);
+      window.removeEventListener('storage', syncProducts);
+    };
+  }, []);
 
   // Handler tombol Sewa: Jika belum login atau belum mempunyai akun, langsung diarahkan ke page login & register
   const handleSewaAction = (e, product) => {
@@ -35,40 +40,34 @@ export const ProductsPage = ({ onBackHome, onOpenDetail, onNavigateSewa, current
     }
   };
 
-  // Menggunakan 1 produk template utama (siap disambungkan ke API / Backend)
-  const allProducts = useMemo(() => {
-    return (siteData.programs || []).slice(0, 1);
-  }, []);
-
-  const categories = [
-    { label: 'Semua', value: 'Semua' },
-    { label: 'Gedung & Venue', value: 'Gedung & Venue' },
-    { label: 'Sewa Alat', value: 'Sewa Alat' },
-    { label: 'Logistik Resmi', value: 'Logistik Resmi' },
-    { label: 'Digital & Kemitraan', value: 'Digital & Kemitraan' }
-  ];
-
-  // Category icons mapping
-  const categoryIcons = {
-    'Gedung & Venue': Building2,
-    'Sewa Alat': Volume2,
-    'Logistik Resmi': Shirt,
-    'Digital & Kemitraan': Laptop
-  };
+  const categories = useMemo(() => {
+    const unique = Array.from(
+      new Set(allProducts.map((p) => p.cat || p.category).filter(Boolean))
+    );
+    return [
+      { label: 'Semua', value: 'Semua' },
+      ...unique.map((c) => ({ label: c, value: c })),
+    ];
+  }, [allProducts]);
 
   // Filter & Search logic
   const filteredProducts = useMemo(() => {
     return allProducts.filter((item) => {
+      const cat = (item.cat || item.category || '').toLowerCase();
       const matchesCategory = 
         selectedCategory === 'Semua' || 
-        item.category.toLowerCase() === selectedCategory.toLowerCase();
+        cat === selectedCategory.toLowerCase();
 
       const query = searchQuery.toLowerCase().trim();
+      const name = (item.name || '').toLowerCase();
+      const tagline = (item.tagline || '').toLowerCase();
+      const desc = (item.desc || item.description || '').toLowerCase();
       const matchesSearch = 
         !query ||
-        item.name.toLowerCase().includes(query) ||
-        item.tagline.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
+        name.includes(query) ||
+        tagline.includes(query) ||
+        desc.includes(query) ||
+        cat.includes(query) ||
         (item.tracks && item.tracks.some(t => t.toLowerCase().includes(query))) ||
         (item.features && item.features.some(f => f.toLowerCase().includes(query)));
 
@@ -165,7 +164,13 @@ export const ProductsPage = ({ onBackHome, onOpenDetail, onNavigateSewa, current
 
       {/* 3. Products Catalog Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-8 mt-10">
-        {filteredProducts.length === 0 ? (
+        {allProducts.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-dashed border-slate-300 max-w-md mx-auto my-8 space-y-2.5">
+            <Package className="w-10 h-10 text-slate-300 mx-auto" />
+            <p className="text-base font-bold text-slate-800">Belum Ada Produk atau Aset</p>
+            <p className="text-xs text-slate-500">Katalog aset dan layanan sewa belum ditambahkan oleh admin.</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 max-w-md mx-auto my-8">
             <p className="text-base font-bold text-slate-800 mb-1">Produk Tidak Ditemukan</p>
             <p className="text-xs text-slate-500 mb-4">Tidak ada produk yang cocok dengan kata kunci "{searchQuery}".</p>
@@ -180,7 +185,9 @@ export const ProductsPage = ({ onBackHome, onOpenDetail, onNavigateSewa, current
           /* Grid / Container Produk: Dibuat kecil (compact ~320px) hanya berisi gambar, judul, deskripsi, harga, dan tombol sewa */
           <div className={filteredProducts.length === 1 ? "max-w-xs mx-auto" : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"}>
             {filteredProducts.map((product) => {
-              const waText = encodeURIComponent(`Halo Pengelola BPA KM UII, saya ingin reservasi/sewa produk: ${product.name}`);
+              const imgSrc = product.image || product.images?.[0] || '/images/banner/banner.jpg';
+              const descText = product.desc || product.description || '';
+              const priceLabel = product.priceText || product.price || 'Hubungi Admin';
 
               return (
                 <div
@@ -192,7 +199,7 @@ export const ProductsPage = ({ onBackHome, onOpenDetail, onNavigateSewa, current
                     {/* Gambar Produk */}
                     <div className="relative h-44 overflow-hidden bg-slate-100">
                       <img
-                        src={product.image}
+                        src={imgSrc}
                         alt={product.name}
                         className={`w-full h-full object-cover ${product.imagePosition || 'object-center'} group-hover:scale-105 transition-transform duration-500`}
                         onError={(e) => { e.target.src = '/images/banner/banner.jpg'; }}
@@ -208,14 +215,14 @@ export const ProductsPage = ({ onBackHome, onOpenDetail, onNavigateSewa, current
 
                       {/* Deskripsi Barang */}
                       <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
-                        {product.description}
+                        {descText}
                       </p>
 
                       {/* Harga Barang */}
                       <div className="pt-2 border-t border-slate-100 flex items-baseline justify-between">
                         <span className="text-[11px] text-slate-400 font-medium">Harga Sewa</span>
                         <span className="text-sm font-extrabold text-uii-blue-900 font-heading">
-                          {product.price || 'Rp 2.500.000 / hari'}
+                          {priceLabel}
                         </span>
                       </div>
                     </div>

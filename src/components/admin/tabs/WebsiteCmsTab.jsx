@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Image, 
   MessageSquare, 
@@ -21,10 +21,108 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { adminStorage } from '../../../utils/adminStorage';
+import { AdminCardOverlayModal, AdminConfirmOverlayModal } from '../AdminOverlayModal';
+
+const PhotoUploadField = ({ label, required = false, value, onChange, onError, className = 'md:col-span-2' }) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const inputRef = useRef(null);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      onError?.('Mohon pilih file gambar yang valid (JPG, PNG, atau WEBP).');
+      return;
+    }
+
+    setIsProcessing(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const maxWidth = 1200;
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        onChange(canvas.toDataURL('image/jpeg', 0.82));
+        setIsProcessing(false);
+      };
+      img.onerror = () => {
+        setIsProcessing(false);
+        onError?.('Gagal memproses file gambar.');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className={className}>
+      <label className="block font-bold text-slate-700 mb-1">
+        {label}{required ? ' *' : ''}
+      </label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+      {value ? (
+        <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+          <img
+            src={value}
+            alt={label}
+            className="w-full h-40 object-cover"
+          />
+          <div className="absolute top-2 right-2 flex items-center space-x-1.5">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="px-2.5 py-1.5 rounded-lg bg-white/90 hover:bg-white text-uii-blue-950 text-[10px] font-bold shadow-sm border border-slate-200 flex items-center space-x-1"
+            >
+              <Upload className="w-3 h-3" />
+              <span>Ganti Foto</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
+              title="Hapus Foto"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={isProcessing}
+          onClick={() => inputRef.current?.click()}
+          className="w-full py-4 px-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-uii-blue-900 bg-slate-50 hover:bg-blue-50/40 transition-colors flex flex-col items-center justify-center space-y-1 text-slate-600"
+        >
+          <Upload className="w-5 h-5 text-uii-blue-900" />
+          <span className="font-bold text-xs">
+            {isProcessing ? 'Memproses gambar...' : 'Pilih / Upload Foto dari Perangkat'}
+          </span>
+          <span className="text-[10px] text-slate-400">
+            Mendukung JPG, PNG, WEBP (Otomatis dikompres)
+          </span>
+        </button>
+      )}
+    </div>
+  );
+};
 
 export const WebsiteCmsTab = () => {
   const [subTab, setSubTab] = useState('banners'); // 'banners' | 'testimonials' | 'products' | 'articles' | 'investor' | 'gallery'
   const [toastMsg, setToastMsg] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null); // { title, message, onConfirm }
 
   // Live state from storage
   const [banners, setBanners] = useState(() => adminStorage.getBanners());
@@ -34,6 +132,24 @@ export const WebsiteCmsTab = () => {
   const [team, setTeam] = useState(() => adminStorage.getTeam());
   const [documents, setDocuments] = useState(() => adminStorage.getDocuments());
   const [gallery, setGallery] = useState(() => adminStorage.getGallery());
+
+  useEffect(() => {
+    const syncAll = () => {
+      setBanners(adminStorage.getBanners());
+      setTestimonials(adminStorage.getTestimonials());
+      setProducts(adminStorage.getProducts());
+      setArticles(adminStorage.getArticles());
+      setTeam(adminStorage.getTeam());
+      setDocuments(adminStorage.getDocuments());
+      setGallery(adminStorage.getGallery());
+    };
+    window.addEventListener('bpa-data-updated', syncAll);
+    window.addEventListener('storage', syncAll);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncAll);
+      window.removeEventListener('storage', syncAll);
+    };
+  }, []);
 
   const showNotification = (msg) => {
     setToastMsg(msg);
@@ -57,7 +173,7 @@ export const WebsiteCmsTab = () => {
   const handleSaveBanner = (e) => {
     e.preventDefault();
     if (!bannerForm.title.trim() || !bannerForm.image.trim()) {
-      alert('Judul dan URL Foto Banner wajib diisi!');
+      showNotification('Judul dan Foto Banner wajib diisi!');
       return;
     }
 
@@ -81,12 +197,16 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeleteBanner = (id) => {
-    if (confirm('Yakin ingin menghapus banner ini?')) {
-      const updated = banners.filter(b => b.id !== id);
-      setBanners(updated);
-      adminStorage.saveBanners(updated);
-      showNotification('Banner berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Banner Beranda',
+      message: 'Yakin ingin menghapus banner ini dari halaman beranda?',
+      onConfirm: () => {
+        const updated = banners.filter(b => b.id !== id);
+        setBanners(updated);
+        adminStorage.saveBanners(updated);
+        showNotification('Banner berhasil dihapus.');
+      }
+    });
   };
 
   /* =========================================================================
@@ -123,12 +243,16 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeleteTesti = (id) => {
-    if (confirm('Hapus testimoni ini?')) {
-      const updated = testimonials.filter(t => t.id !== id);
-      setTestimonials(updated);
-      adminStorage.saveTestimonials(updated);
-      showNotification('Testimoni berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Testimoni',
+      message: 'Yakin ingin menghapus ulasan testimoni ini?',
+      onConfirm: () => {
+        const updated = testimonials.filter(t => t.id !== id);
+        setTestimonials(updated);
+        adminStorage.saveTestimonials(updated);
+        showNotification('Testimoni berhasil dihapus.');
+      }
+    });
   };
 
   /* =========================================================================
@@ -142,7 +266,7 @@ export const WebsiteCmsTab = () => {
     priceText: 'Rp 350.000 / hari',
     priceValue: 350000,
     stock: 1,
-    image: '/images/produk/gedung-scc.png',
+    image: '',
     desc: ''
   });
 
@@ -169,12 +293,16 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeleteProduct = (id) => {
-    if (confirm('Yakin ingin menghapus produk ini dari katalog?')) {
-      const updated = products.filter(p => p.id !== id);
-      setProducts(updated);
-      adminStorage.saveProducts(updated);
-      showNotification('Produk berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Produk Sewa',
+      message: 'Yakin ingin menghapus produk ini dari katalog sewa BPA?',
+      onConfirm: () => {
+        const updated = products.filter(p => p.id !== id);
+        setProducts(updated);
+        adminStorage.saveProducts(updated);
+        showNotification('Produk berhasil dihapus.');
+      }
+    });
   };
 
   /* =========================================================================
@@ -188,7 +316,7 @@ export const WebsiteCmsTab = () => {
     date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
     author: 'Sekretariat BPA',
     readTime: '3 min baca',
-    image: '/images/artikel/pemberitahuan-pemilihan-rektor.jpg',
+    image: '',
     excerpt: ''
   });
 
@@ -211,12 +339,16 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeleteArticle = (id) => {
-    if (confirm('Hapus artikel ini?')) {
-      const updated = articles.filter(a => a.id !== id);
-      setArticles(updated);
-      adminStorage.saveArticles(updated);
-      showNotification('Artikel telah dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Artikel Berita',
+      message: 'Yakin ingin menghapus artikel berita ini?',
+      onConfirm: () => {
+        const updated = articles.filter(a => a.id !== id);
+        setArticles(updated);
+        adminStorage.saveArticles(updated);
+        showNotification('Artikel telah dihapus.');
+      }
+    });
   };
 
   /* =========================================================================
@@ -228,7 +360,7 @@ export const WebsiteCmsTab = () => {
     name: '',
     role: '',
     division: 'Pengurus Harian',
-    image: '/images/INVESTOR/Irfan-ArdiansyahArdiansyah.webp'
+    image: ''
   });
 
   const handleSaveMember = (e) => {
@@ -250,12 +382,16 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeleteMember = (id) => {
-    if (confirm('Hapus anggota ini dari struktur organisasi?')) {
-      const updated = team.filter(m => m.id !== id);
-      setTeam(updated);
-      adminStorage.saveTeam(updated);
-      showNotification('Anggota pengurus berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Anggota Pengurus',
+      message: 'Yakin ingin menghapus anggota ini dari struktur organisasi?',
+      onConfirm: () => {
+        const updated = team.filter(m => m.id !== id);
+        setTeam(updated);
+        adminStorage.saveTeam(updated);
+        showNotification('Anggota pengurus berhasil dihapus.');
+      }
+    });
   };
 
   // Dokumen SK & LPJ
@@ -265,7 +401,7 @@ export const WebsiteCmsTab = () => {
     type: 'LPJ',
     period: 'Triwulan 4',
     date: 'Desember 2026',
-    fileImage: '/images/INVESTOR/lpj-tw4.png',
+    fileImage: '',
     downloadUrl: '/docs/SK-Akreditasi-Teknik-Elektro-Program-Sarjana.pdf'
   });
 
@@ -281,12 +417,16 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeleteDoc = (id) => {
-    if (confirm('Hapus dokumen ini?')) {
-      const updated = documents.filter(d => d.id !== id);
-      setDocuments(updated);
-      adminStorage.saveDocuments(updated);
-      showNotification('Dokumen berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Dokumen SK / LPJ',
+      message: 'Yakin ingin menghapus dokumen resmi ini?',
+      onConfirm: () => {
+        const updated = documents.filter(d => d.id !== id);
+        setDocuments(updated);
+        adminStorage.saveDocuments(updated);
+        showNotification('Dokumen berhasil dihapus.');
+      }
+    });
   };
 
   /* =========================================================================
@@ -298,7 +438,7 @@ export const WebsiteCmsTab = () => {
     title: '',
     category: 'Kegiatan & Dokumentasi',
     date: new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
-    image: '/images/gallery/csr-berkah.png',
+    image: '',
     youtubeId: '',
     description: ''
   });
@@ -307,12 +447,16 @@ export const WebsiteCmsTab = () => {
     e.preventDefault();
     const updated = { ...gallery };
     if (galleryType === 'photo') {
+      if (!galleryForm.image) {
+        showNotification('Mohon unggah foto dokumentasi terlebih dahulu.');
+        return;
+      }
       const newPhoto = {
         id: `gp-${Date.now()}`,
         title: galleryForm.title,
         category: galleryForm.category,
         date: galleryForm.date,
-        image: galleryForm.image || '/images/gallery/csr-berkah.png',
+        image: galleryForm.image,
         description: galleryForm.description
       };
       updated.photos = [newPhoto, ...updated.photos];
@@ -344,21 +488,29 @@ export const WebsiteCmsTab = () => {
   };
 
   const handleDeletePhoto = (id) => {
-    if (confirm('Hapus foto ini dari galeri?')) {
-      const updated = { ...gallery, photos: gallery.photos.filter(p => p.id !== id) };
-      setGallery(updated);
-      adminStorage.saveGallery(updated);
-      showNotification('Foto galeri berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Foto Galeri',
+      message: 'Yakin ingin menghapus foto ini dari galeri dokumentasi?',
+      onConfirm: () => {
+        const updated = { ...gallery, photos: gallery.photos.filter(p => p.id !== id) };
+        setGallery(updated);
+        adminStorage.saveGallery(updated);
+        showNotification('Foto galeri berhasil dihapus.');
+      }
+    });
   };
 
   const handleDeleteVideo = (id) => {
-    if (confirm('Hapus video ini dari galeri?')) {
-      const updated = { ...gallery, videos: gallery.videos.filter(v => v.id !== id) };
-      setGallery(updated);
-      adminStorage.saveGallery(updated);
-      showNotification('Video galeri berhasil dihapus.');
-    }
+    setConfirmDelete({
+      title: 'Hapus Video Galeri',
+      message: 'Yakin ingin menghapus video dokumentasi ini dari galeri?',
+      onConfirm: () => {
+        const updated = { ...gallery, videos: gallery.videos.filter(v => v.id !== id) };
+        setGallery(updated);
+        adminStorage.saveGallery(updated);
+        showNotification('Video galeri berhasil dihapus.');
+      }
+    });
   };
 
   return (
@@ -433,7 +585,7 @@ export const WebsiteCmsTab = () => {
               onClick={() => {
                 setIsAddingBanner(true);
                 setEditingBannerId(null);
-                setBannerForm({ title: '', subtitle: '', description: '', image: '/images/produk/detail/scc-wide.jpg', badge: 'Resmi BPA KM UII', active: true });
+                setBannerForm({ title: '', subtitle: '', description: '', image: '', badge: 'Resmi BPA KM UII', active: true });
               }}
               className="px-4 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold font-bold text-xs flex items-center space-x-2 shadow-xs hover:bg-uii-blue-900 self-start"
             >
@@ -442,18 +594,17 @@ export const WebsiteCmsTab = () => {
             </button>
           </div>
 
-          {/* Form Modal / Panel Tambah & Edit Banner */}
-          {isAddingBanner && (
-            <form onSubmit={handleSaveBanner} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <h4 className="text-sm font-black text-uii-blue-950 font-heading">
-                  {editingBannerId ? 'Edit Banner Beranda' : 'Tambah Banner Baru'}
-                </h4>
-                <button type="button" onClick={() => setIsAddingBanner(false)} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
+          {/* Card Overlay Modal Tambah & Edit Banner */}
+          <AdminCardOverlayModal
+            isOpen={isAddingBanner}
+            onClose={() => {
+              setIsAddingBanner(false);
+              setEditingBannerId(null);
+            }}
+            title={editingBannerId ? 'Edit Banner Beranda' : 'Tambah Banner Baru'}
+            subtitle="Atur tampilan foto latar, judul, dan badge pada Hero Slider beranda."
+          >
+            <form onSubmit={handleSaveBanner} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Judul Banner (Title): *</label>
@@ -463,7 +614,7 @@ export const WebsiteCmsTab = () => {
                     value={bannerForm.title}
                     onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
                     placeholder="Contoh: Gedung Student Convention Center"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -473,20 +624,16 @@ export const WebsiteCmsTab = () => {
                     value={bannerForm.subtitle}
                     onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
                     placeholder="Contoh: Pusat Kegiatan Mahasiswa & Pagelaran Seni"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">URL / Path Foto Banner: *</label>
-                  <input
-                    type="text"
-                    required
-                    value={bannerForm.image}
-                    onChange={(e) => setBannerForm({ ...bannerForm, image: e.target.value })}
-                    placeholder="/images/produk/detail/scc-wide.jpg"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
-                  />
-                </div>
+                <PhotoUploadField
+                  label="Upload Foto Banner:"
+                  required
+                  value={bannerForm.image}
+                  onChange={(val) => setBannerForm({ ...bannerForm, image: val })}
+                  onError={showNotification}
+                />
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Badge Teks:</label>
                   <input
@@ -494,7 +641,7 @@ export const WebsiteCmsTab = () => {
                     value={bannerForm.badge}
                     onChange={(e) => setBannerForm({ ...bannerForm, badge: e.target.value })}
                     placeholder="Contoh: Kesiapan Lapangan 100%"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -504,28 +651,31 @@ export const WebsiteCmsTab = () => {
                     value={bannerForm.description}
                     onChange={(e) => setBannerForm({ ...bannerForm, description: e.target.value })}
                     placeholder="Tuliskan keterangan fasilitas atau ajakan sewa..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsAddingBanner(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setIsAddingBanner(false);
+                    setEditingBannerId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                  className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                 >
                   Simpan Banner
                 </button>
               </div>
             </form>
-          )}
+          </AdminCardOverlayModal>
 
           {/* Grid List Banner */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -609,13 +759,17 @@ export const WebsiteCmsTab = () => {
             </button>
           </div>
 
-          {isAddingTesti && (
-            <form onSubmit={handleSaveTesti} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-              <h4 className="text-sm font-black text-uii-blue-950 font-heading border-b border-slate-200 pb-2">
-                {editingTestiId ? 'Edit Testimoni' : 'Tambah Testimoni Baru'}
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <AdminCardOverlayModal
+            isOpen={isAddingTesti}
+            onClose={() => {
+              setIsAddingTesti(false);
+              setEditingTestiId(null);
+            }}
+            title={editingTestiId ? 'Edit Testimoni Penyewa' : 'Tambah Testimoni Baru'}
+            subtitle="Tampilkan ulasan resmi dari mahasiswa, ormawa, maupun masyarakat umum."
+          >
+            <form onSubmit={handleSaveTesti} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Nama Penyewa: *</label>
                   <input
@@ -624,7 +778,7 @@ export const WebsiteCmsTab = () => {
                     value={testiForm.name}
                     onChange={(e) => setTestiForm({ ...testiForm, name: e.target.value })}
                     placeholder="Contoh: Muhammad Farhan"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -634,7 +788,7 @@ export const WebsiteCmsTab = () => {
                     value={testiForm.role}
                     onChange={(e) => setTestiForm({ ...testiForm, role: e.target.value })}
                     placeholder="Contoh: Ketua Panitia / Divisi Logistik"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -644,7 +798,7 @@ export const WebsiteCmsTab = () => {
                     value={testiForm.org}
                     onChange={(e) => setTestiForm({ ...testiForm, org: e.target.value })}
                     placeholder="Contoh: Seminar Nasional FTI UII"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -654,7 +808,7 @@ export const WebsiteCmsTab = () => {
                     value={testiForm.asset}
                     onChange={(e) => setTestiForm({ ...testiForm, asset: e.target.value })}
                     placeholder="Contoh: Gedung SCC & Sound HTS"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -662,7 +816,7 @@ export const WebsiteCmsTab = () => {
                   <select
                     value={testiForm.rating}
                     onChange={(e) => setTestiForm({ ...testiForm, rating: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   >
                     <option value={5}>⭐⭐⭐⭐⭐ (5 Bintang - Sangat Puas)</option>
                     <option value={4}>⭐⭐⭐⭐ (4 Bintang - Puas)</option>
@@ -676,10 +830,10 @@ export const WebsiteCmsTab = () => {
                     value={testiForm.date}
                     onChange={(e) => setTestiForm({ ...testiForm, date: e.target.value })}
                     placeholder="Contoh: 12 Oktober 2026"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
-                <div className="md:col-span-3">
+                <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">Kutipan Ulasan / Testimoni: *</label>
                   <textarea
                     rows={3}
@@ -687,28 +841,31 @@ export const WebsiteCmsTab = () => {
                     value={testiForm.content}
                     onChange={(e) => setTestiForm({ ...testiForm, content: e.target.value })}
                     placeholder="Tuliskan pengalaman penyewa terhadap fasilitas dan bantuan operasional BPA..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsAddingTesti(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setIsAddingTesti(false);
+                    setEditingTestiId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                  className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                 >
                   Simpan Testimoni
                 </button>
               </div>
             </form>
-          )}
+          </AdminCardOverlayModal>
 
           {/* Grid Testimoni */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -776,7 +933,7 @@ export const WebsiteCmsTab = () => {
               onClick={() => {
                 setIsAddingProduct(true);
                 setEditingProdId(null);
-                setProdForm({ name: '', cat: 'Gedung', priceText: 'Rp 250.000 / hari', priceValue: 250000, stock: 1, image: '/images/produk/gedung-scc.png', desc: '' });
+                setProdForm({ name: '', cat: 'Gedung', priceText: 'Rp 250.000 / hari', priceValue: 250000, stock: 1, image: '', desc: '' });
               }}
               className="px-4 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold font-bold text-xs flex items-center space-x-2 shadow-xs hover:bg-uii-blue-900 self-start"
             >
@@ -785,13 +942,17 @@ export const WebsiteCmsTab = () => {
             </button>
           </div>
 
-          {isAddingProduct && (
-            <form onSubmit={handleSaveProduct} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-              <h4 className="text-sm font-black text-uii-blue-950 font-heading border-b border-slate-200 pb-2">
-                {editingProdId ? 'Edit Produk Aset' : 'Tambah Produk Aset Baru'}
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <AdminCardOverlayModal
+            isOpen={isAddingProduct}
+            onClose={() => {
+              setIsAddingProduct(false);
+              setEditingProdId(null);
+            }}
+            title={editingProdId ? 'Edit Produk Aset' : 'Tambah Produk Aset Baru'}
+            subtitle="Atur harga sewa, stok unit, foto, dan spesifikasi aset sarpras."
+          >
+            <form onSubmit={handleSaveProduct} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Nama Aset / Layanan: *</label>
                   <input
@@ -800,7 +961,7 @@ export const WebsiteCmsTab = () => {
                     value={prodForm.name}
                     onChange={(e) => setProdForm({ ...prodForm, name: e.target.value })}
                     placeholder="Contoh: Sound System HTS P12E"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -808,7 +969,7 @@ export const WebsiteCmsTab = () => {
                   <select
                     value={prodForm.cat}
                     onChange={(e) => setProdForm({ ...prodForm, cat: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   >
                     <option value="Gedung">Gedung / Venue</option>
                     <option value="Audio">Audio & Tata Suara</option>
@@ -830,7 +991,7 @@ export const WebsiteCmsTab = () => {
                       setProdForm({ ...prodForm, priceValue: val, priceText: `Rp ${val.toLocaleString('id-ID')} / hari` });
                     }}
                     placeholder="Contoh: 350000"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -840,7 +1001,7 @@ export const WebsiteCmsTab = () => {
                     value={prodForm.priceText}
                     onChange={(e) => setProdForm({ ...prodForm, priceText: e.target.value })}
                     placeholder="Rp 350.000 / hari"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -849,48 +1010,47 @@ export const WebsiteCmsTab = () => {
                     type="number"
                     value={prodForm.stock || 1}
                     onChange={(e) => setProdForm({ ...prodForm, stock: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">URL / Path Foto Produk:</label>
-                  <input
-                    type="text"
-                    value={prodForm.image}
-                    onChange={(e) => setProdForm({ ...prodForm, image: e.target.value })}
-                    placeholder="/images/produk/gedung-scc.png"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
-                  />
-                </div>
-                <div className="md:col-span-3">
+                <PhotoUploadField
+                  label="Upload Foto Produk:"
+                  value={prodForm.image}
+                  onChange={(val) => setProdForm({ ...prodForm, image: val })}
+                  onError={showNotification}
+                />
+                <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">Deskripsi Singkat Aset:</label>
                   <textarea
                     rows={2}
                     value={prodForm.desc}
                     onChange={(e) => setProdForm({ ...prodForm, desc: e.target.value })}
                     placeholder="Jelaskan spesifikasi, kapasitas, atau kelengkapan alat..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsAddingProduct(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setIsAddingProduct(false);
+                    setEditingProdId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                  className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                 >
                   Simpan Aset
                 </button>
               </div>
             </form>
-          )}
+          </AdminCardOverlayModal>
 
           {/* Tabel List Produk */}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
@@ -994,7 +1154,7 @@ export const WebsiteCmsTab = () => {
                   date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
                   author: 'Sekretariat BPA',
                   readTime: '3 min baca',
-                  image: '/images/artikel/pemberitahuan-pemilihan-rektor.jpg',
+                  image: '',
                   excerpt: ''
                 });
               }}
@@ -1005,13 +1165,17 @@ export const WebsiteCmsTab = () => {
             </button>
           </div>
 
-          {isAddingArticle && (
-            <form onSubmit={handleSaveArticle} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-              <h4 className="text-sm font-black text-uii-blue-950 font-heading border-b border-slate-200 pb-2">
-                {editingArtId ? 'Edit Artikel Berita' : 'Tulis Artikel Berita Baru'}
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <AdminCardOverlayModal
+            isOpen={isAddingArticle}
+            onClose={() => {
+              setIsAddingArticle(false);
+              setEditingArtId(null);
+            }}
+            title={editingArtId ? 'Edit Artikel Berita' : 'Tulis Artikel Berita Baru'}
+            subtitle="Publikasikan warta kegiatan, CSR, maupun pengumuman resmi BPA KM UII."
+          >
+            <form onSubmit={handleSaveArticle} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                 <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">Judul Artikel: *</label>
                   <input
@@ -1020,7 +1184,7 @@ export const WebsiteCmsTab = () => {
                     value={articleForm.title}
                     onChange={(e) => setArticleForm({ ...articleForm, title: e.target.value })}
                     placeholder="Judul berita atau pengumuman..."
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -1030,7 +1194,7 @@ export const WebsiteCmsTab = () => {
                     value={articleForm.category}
                     onChange={(e) => setArticleForm({ ...articleForm, category: e.target.value })}
                     placeholder="Contoh: Berita Ormawa / CSR"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -1040,7 +1204,7 @@ export const WebsiteCmsTab = () => {
                     value={articleForm.author}
                     onChange={(e) => setArticleForm({ ...articleForm, author: e.target.value })}
                     placeholder="BPA Media Center"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -1050,20 +1214,16 @@ export const WebsiteCmsTab = () => {
                     value={articleForm.date}
                     onChange={(e) => setArticleForm({ ...articleForm, date: e.target.value })}
                     placeholder="03 November 2026"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">URL Foto Thumbnail:</label>
-                  <input
-                    type="text"
-                    value={articleForm.image}
-                    onChange={(e) => setArticleForm({ ...articleForm, image: e.target.value })}
-                    placeholder="/images/artikel/pemberitahuan-pemilihan-rektor.jpg"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
-                  />
-                </div>
-                <div className="md:col-span-3">
+                <PhotoUploadField
+                  label="Upload Foto Thumbnail:"
+                  value={articleForm.image}
+                  onChange={(val) => setArticleForm({ ...articleForm, image: val })}
+                  onError={showNotification}
+                />
+                <div className="md:col-span-2">
                   <label className="block font-bold text-slate-700 mb-1">Ringkasan / Isi Berita: *</label>
                   <textarea
                     rows={4}
@@ -1071,28 +1231,31 @@ export const WebsiteCmsTab = () => {
                     value={articleForm.excerpt}
                     onChange={(e) => setArticleForm({ ...articleForm, excerpt: e.target.value })}
                     placeholder="Tuliskan isi atau ringkasan berita..."
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsAddingArticle(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setIsAddingArticle(false);
+                    setEditingArtId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                  className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                 >
                   Publikasikan Artikel
                 </button>
               </div>
             </form>
-          )}
+          </AdminCardOverlayModal>
 
           {/* Grid List Artikel */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1168,7 +1331,7 @@ export const WebsiteCmsTab = () => {
                 onClick={() => {
                   setIsAddingMember(true);
                   setEditingMemberId(null);
-                  setMemberForm({ name: '', role: '', division: 'Staff Pengelolaan Aset', image: '/images/INVESTOR/Irfan-ArdiansyahArdiansyah.webp' });
+                  setMemberForm({ name: '', role: '', division: 'Staff Pengelolaan Aset', image: '' });
                 }}
                 className="px-4 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold font-bold text-xs flex items-center space-x-2 shadow-xs hover:bg-uii-blue-900 self-start"
               >
@@ -1177,13 +1340,17 @@ export const WebsiteCmsTab = () => {
               </button>
             </div>
 
-            {isAddingMember && (
-              <form onSubmit={handleSaveMember} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-                <h4 className="text-sm font-black text-uii-blue-950 font-heading border-b border-slate-200 pb-2">
-                  {editingMemberId ? 'Edit Anggota Pengurus' : 'Tambah Anggota Baru'}
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <AdminCardOverlayModal
+              isOpen={isAddingMember}
+              onClose={() => {
+                setIsAddingMember(false);
+                setEditingMemberId(null);
+              }}
+              title={editingMemberId ? 'Edit Anggota Pengurus' : 'Tambah Anggota Pengurus Baru'}
+              subtitle="Perbarui nama, jabatan resmi, divisi, dan foto profil pengurus BPA KM UII."
+            >
+              <form onSubmit={handleSaveMember} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Nama Lengkap Anggota: *</label>
                     <input
@@ -1192,7 +1359,7 @@ export const WebsiteCmsTab = () => {
                       value={memberForm.name}
                       onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value.toUpperCase() })}
                       placeholder="CONTOH: MUHAMMAD FARHAN"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -1203,7 +1370,7 @@ export const WebsiteCmsTab = () => {
                       value={memberForm.role}
                       onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value.toUpperCase() })}
                       placeholder="CONTOH: STAFF OPERASIONAL SARPRAS"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -1213,38 +1380,37 @@ export const WebsiteCmsTab = () => {
                       value={memberForm.division}
                       onChange={(e) => setMemberForm({ ...memberForm, division: e.target.value })}
                       placeholder="Contoh: Pengelolaan Unit Sarana (PUS)"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">URL / Path Foto Formal:</label>
-                    <input
-                      type="text"
-                      value={memberForm.image}
-                      onChange={(e) => setMemberForm({ ...memberForm, image: e.target.value })}
-                      placeholder="/images/INVESTOR/Irfan-ArdiansyahArdiansyah.webp"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
-                    />
-                  </div>
+                  <PhotoUploadField
+                    label="Upload Foto Formal:"
+                    value={memberForm.image}
+                    onChange={(val) => setMemberForm({ ...memberForm, image: val })}
+                    onError={showNotification}
+                  />
                 </div>
 
-                <div className="flex justify-end space-x-2 pt-2">
+                <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setIsAddingMember(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                    onClick={() => {
+                      setIsAddingMember(false);
+                      setEditingMemberId(null);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                    className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                   >
                     Simpan Anggota
                   </button>
                 </div>
               </form>
-            )}
+            </AdminCardOverlayModal>
 
             {/* Grid Kartu Pengurus */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
@@ -1308,7 +1474,7 @@ export const WebsiteCmsTab = () => {
                     type: 'LPJ',
                     period: 'Triwulan 4',
                     date: 'Desember 2026',
-                    fileImage: '/images/INVESTOR/lpj-tw4.png',
+                    fileImage: '',
                     downloadUrl: '/docs/SK-Akreditasi-Teknik-Elektro-Program-Sarjana.pdf'
                   });
                 }}
@@ -1319,13 +1485,14 @@ export const WebsiteCmsTab = () => {
               </button>
             </div>
 
-            {isAddingDoc && (
-              <form onSubmit={handleSaveDoc} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-                <h4 className="text-sm font-black text-uii-blue-950 font-heading border-b border-slate-200 pb-2">
-                  Upload Dokumen SK / LPJ Baru
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <AdminCardOverlayModal
+              isOpen={isAddingDoc}
+              onClose={() => setIsAddingDoc(false)}
+              title="Upload Dokumen SK / LPJ Baru"
+              subtitle="Tambahkan dokumen resmi SK pengesahan atau Laporan Pertanggungjawaban."
+            >
+              <form onSubmit={handleSaveDoc} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                   <div className="md:col-span-2">
                     <label className="block font-bold text-slate-700 mb-1">Judul Dokumen: *</label>
                     <input
@@ -1334,7 +1501,7 @@ export const WebsiteCmsTab = () => {
                       value={docForm.title}
                       onChange={(e) => setDocForm({ ...docForm, title: e.target.value })}
                       placeholder="Contoh: Laporan Pertanggungjawaban (LPJ) TW 4 BPA KM UII"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -1342,7 +1509,7 @@ export const WebsiteCmsTab = () => {
                     <select
                       value={docForm.type}
                       onChange={(e) => setDocForm({ ...docForm, type: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     >
                       <option value="LPJ">LPJ (Laporan Pertanggungjawaban)</option>
                       <option value="SK">SK (Surat Keputusan Pengesahan)</option>
@@ -1355,19 +1522,15 @@ export const WebsiteCmsTab = () => {
                       value={docForm.period}
                       onChange={(e) => setDocForm({ ...docForm, period: e.target.value })}
                       placeholder="Triwulan 1 / TW 2 / Akhir Periode"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">URL / Path Foto Sampul Dokumen:</label>
-                    <input
-                      type="text"
-                      value={docForm.fileImage}
-                      onChange={(e) => setDocForm({ ...docForm, fileImage: e.target.value })}
-                      placeholder="/images/INVESTOR/lpj-tw4.png"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
-                    />
-                  </div>
+                  <PhotoUploadField
+                    label="Upload Foto Sampul Dokumen:"
+                    value={docForm.fileImage}
+                    onChange={(val) => setDocForm({ ...docForm, fileImage: val })}
+                    onError={showNotification}
+                  />
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">URL File Download (PDF):</label>
                     <input
@@ -1375,28 +1538,28 @@ export const WebsiteCmsTab = () => {
                       value={docForm.downloadUrl}
                       onChange={(e) => setDocForm({ ...docForm, downloadUrl: e.target.value })}
                       placeholder="/docs/SK-Akreditasi-Teknik-Elektro-Program-Sarjana.pdf"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
                 </div>
 
-                <div className="flex justify-end space-x-2 pt-2">
+                <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setIsAddingDoc(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                    className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                    className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                   >
                     Simpan Dokumen
                   </button>
                 </div>
               </form>
-            )}
+            </AdminCardOverlayModal>
 
             {/* Grid Dokumen SK & LPJ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -1465,7 +1628,7 @@ export const WebsiteCmsTab = () => {
                   title: '',
                   category: 'Kegiatan & CSR',
                   date: 'November 2026',
-                  image: '/images/gallery/csr-berkah.png',
+                  image: '',
                   youtubeId: '',
                   description: ''
                 });
@@ -1477,12 +1640,13 @@ export const WebsiteCmsTab = () => {
             </button>
           </div>
 
-          {isAddingGallery && (
-            <form onSubmit={handleSaveGallery} className="p-6 bg-slate-50 border-2 border-uii-blue-900/20 rounded-2xl space-y-4">
-              <h4 className="text-sm font-black text-uii-blue-950 font-heading border-b border-slate-200 pb-2">
-                Tambah Konten Galeri Baru
-              </h4>
-
+          <AdminCardOverlayModal
+            isOpen={isAddingGallery}
+            onClose={() => setIsAddingGallery(false)}
+            title="Tambah Konten Galeri Baru"
+            subtitle="Unggah foto dokumentasi kegiatan atau tautan video YouTube BPA KM UII."
+          >
+            <form onSubmit={handleSaveGallery} className="space-y-4">
               <div className="flex items-center space-x-4 mb-2 text-xs font-bold">
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
@@ -1506,7 +1670,7 @@ export const WebsiteCmsTab = () => {
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Judul Dokumentasi: *</label>
                   <input
@@ -1515,7 +1679,7 @@ export const WebsiteCmsTab = () => {
                     value={galleryForm.title}
                     onChange={(e) => setGalleryForm({ ...galleryForm, title: e.target.value })}
                     placeholder="Contoh: CSR Berkah Bersama BPA KM UII"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -1525,22 +1689,18 @@ export const WebsiteCmsTab = () => {
                     value={galleryForm.category}
                     onChange={(e) => setGalleryForm({ ...galleryForm, category: e.target.value })}
                     placeholder="Contoh: Kegiatan & CSR / Pelantikan"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
 
                 {galleryType === 'photo' ? (
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">URL / Path Foto: *</label>
-                    <input
-                      type="text"
-                      required
-                      value={galleryForm.image}
-                      onChange={(e) => setGalleryForm({ ...galleryForm, image: e.target.value })}
-                      placeholder="/images/gallery/csr-berkah.png"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
-                    />
-                  </div>
+                  <PhotoUploadField
+                    label="Upload Foto Dokumentasi:"
+                    required
+                    value={galleryForm.image}
+                    onChange={(val) => setGalleryForm({ ...galleryForm, image: val })}
+                    onError={showNotification}
+                  />
                 ) : (
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">YouTube Video ID / URL: *</label>
@@ -1550,7 +1710,7 @@ export const WebsiteCmsTab = () => {
                       value={galleryForm.youtubeId}
                       onChange={(e) => setGalleryForm({ ...galleryForm, youtubeId: e.target.value })}
                       placeholder="Contoh: xvbcBVoYb6w atau https://youtube.com/watch?v=..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                     />
                   </div>
                 )}
@@ -1562,7 +1722,7 @@ export const WebsiteCmsTab = () => {
                     value={galleryForm.date}
                     onChange={(e) => setGalleryForm({ ...galleryForm, date: e.target.value })}
                     placeholder="November 2026"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
 
@@ -1573,28 +1733,28 @@ export const WebsiteCmsTab = () => {
                     value={galleryForm.description}
                     onChange={(e) => setGalleryForm({ ...galleryForm, description: e.target.value })}
                     placeholder="Tuliskan gambaran kegiatan..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsAddingGallery(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
+                  className="px-5 py-2.5 rounded-xl bg-uii-blue-950 text-uii-gold text-xs font-black shadow-xs hover:bg-uii-blue-900"
                 >
                   Simpan Konten Galeri
                 </button>
               </div>
             </form>
-          )}
+          </AdminCardOverlayModal>
 
           {/* List Foto */}
           <div>
@@ -1671,6 +1831,15 @@ export const WebsiteCmsTab = () => {
         </div>
       )}
 
+      {/* Card Overlay Konfirmasi Hapus Konten CMS */}
+      <AdminConfirmOverlayModal
+        isOpen={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete?.onConfirm?.()}
+        title={confirmDelete?.title || 'Konfirmasi Hapus'}
+        message={confirmDelete?.message || 'Yakin ingin menghapus data ini?'}
+        confirmLabel="Ya, Hapus"
+      />
     </div>
   );
 };

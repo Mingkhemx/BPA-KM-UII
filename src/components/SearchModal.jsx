@@ -1,10 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, GraduationCap, Newspaper, FileText, ArrowRight } from 'lucide-react';
-import { siteData } from '../data/siteData';
+import { Search, X, Package, Newspaper, ArrowRight } from 'lucide-react';
+import { adminStorage } from '../utils/adminStorage';
 
 export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
   const [query, setQuery] = useState('');
+  const [products, setProducts] = useState(() => adminStorage.getProducts());
+  const [articles, setArticles] = useState(() => adminStorage.getArticles());
+
+  useEffect(() => {
+    const syncData = () => {
+      setProducts(adminStorage.getProducts());
+      setArticles(adminStorage.getArticles());
+    };
+    window.addEventListener('bpa-data-updated', syncData);
+    window.addEventListener('storage', syncData);
+    return () => {
+      window.removeEventListener('bpa-data-updated', syncData);
+      window.removeEventListener('storage', syncData);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -20,33 +35,25 @@ export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
 
   const q = query.toLowerCase().trim();
 
-  // Search in programs
+  // Search in products
   const matchedPrograms = q
-    ? siteData.programs.filter((p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.degree.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q)
+    ? products.filter((p) =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.cat || p.category || '').toLowerCase().includes(q) ||
+        (p.desc || p.description || '').toLowerCase().includes(q)
       )
     : [];
 
-  // Search in news
+  // Search in articles
   const matchedNews = q
-    ? siteData.news.filter((n) =>
-        n.title.toLowerCase().includes(q) ||
-        n.excerpt.toLowerCase().includes(q) ||
-        n.category.toLowerCase().includes(q)
+    ? articles.filter((n) =>
+        (n.title || '').toLowerCase().includes(q) ||
+        (n.excerpt || '').toLowerCase().includes(q) ||
+        (n.category || '').toLowerCase().includes(q)
       )
     : [];
 
-  // Search in announcements
-  const matchedAnnouncements = q
-    ? siteData.announcements.filter((a) =>
-        a.title.toLowerCase().includes(q) ||
-        a.desc.toLowerCase().includes(q)
-      )
-    : [];
-
-  const totalResults = matchedPrograms.length + matchedNews.length + matchedAnnouncements.length;
+  const totalResults = matchedPrograms.length + matchedNews.length;
 
   return (
     <AnimatePresence>
@@ -98,7 +105,7 @@ export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
               <div className="text-center py-8">
                 <p className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-3">Pencarian Populer</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {['Informatika', 'Teknik Industri', 'Ujian Tengah Semester', 'Beasiswa', 'Profesi Insinyur', 'SISO'].map((tag) => (
+                  {['SCC', 'Sound System', 'Katering', 'HT', 'CSR'].map((tag) => (
                     <button
                       key={tag}
                       onClick={() => setQuery(tag)}
@@ -114,16 +121,16 @@ export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
             {query && totalResults === 0 && (
               <div className="text-center py-10 text-slate-500">
                 <p className="text-sm font-semibold">Tidak ditemukan hasil untuk "{query}"</p>
-                <p className="text-xs mt-1">Coba kata kunci lain seperti: "Informatika", "UTS", atau "Industri".</p>
+                <p className="text-xs mt-1">Coba kata kunci lain atau periksa kembali katalog aset dan artikel.</p>
               </div>
             )}
 
-            {/* Programs results */}
+            {/* Products results */}
             {matchedPrograms.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-bold uppercase text-uii-blue-900 tracking-wider flex items-center space-x-1.5">
-                  <GraduationCap className="w-4 h-4" />
-                  <span>Program Studi ({matchedPrograms.length})</span>
+                  <Package className="w-4 h-4" />
+                  <span>Produk & Aset ({matchedPrograms.length})</span>
                 </p>
                 <div className="space-y-1.5">
                   {matchedPrograms.map((p) => (
@@ -134,7 +141,7 @@ export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
                     >
                       <div>
                         <h4 className="text-sm font-bold text-slate-900 group-hover:text-uii-blue-900">{p.name}</h4>
-                        <p className="text-xs text-slate-500">{p.degree} • {p.accreditation}</p>
+                        <p className="text-xs text-slate-500">{p.cat || p.category || 'Aset'} • {p.priceText || p.price || ''}</p>
                       </div>
                       <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-uii-blue-900" />
                     </div>
@@ -148,7 +155,7 @@ export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
               <div className="space-y-2">
                 <p className="text-xs font-bold uppercase text-uii-blue-900 tracking-wider flex items-center space-x-1.5">
                   <Newspaper className="w-4 h-4" />
-                  <span>Berita ({matchedNews.length})</span>
+                  <span>Artikel ({matchedNews.length})</span>
                 </p>
                 <div className="space-y-1.5">
                   {matchedNews.map((n) => (
@@ -160,40 +167,6 @@ export const SearchModal = ({ isOpen, onClose, onSelectItem }) => {
                       <div>
                         <h4 className="text-sm font-bold text-slate-900 group-hover:text-uii-blue-900 line-clamp-1">{n.title}</h4>
                         <p className="text-xs text-slate-500">{n.date} • {n.category}</p>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-uii-blue-900" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Announcements results */}
-            {matchedAnnouncements.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-bold uppercase text-uii-blue-900 tracking-wider flex items-center space-x-1.5">
-                  <FileText className="w-4 h-4" />
-                  <span>Pengumuman ({matchedAnnouncements.length})</span>
-                </p>
-                <div className="space-y-1.5">
-                  {matchedAnnouncements.map((a) => (
-                    <div
-                      key={a.id}
-                      onClick={() => {
-                        onSelectItem({
-                          title: a.title,
-                          category: a.category,
-                          date: a.date,
-                          content: a.desc,
-                          image: "/images/Masjid-Ulil-Albab-UII-80x80.jpg"
-                        });
-                        onClose();
-                      }}
-                      className="p-3 rounded-xl hover:bg-uii-blue-50 cursor-pointer flex items-center justify-between group transition-colors"
-                    >
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-uii-blue-900 line-clamp-1">{a.title}</h4>
-                        <p className="text-xs text-slate-500">{a.date}</p>
                       </div>
                       <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-uii-blue-900" />
                     </div>

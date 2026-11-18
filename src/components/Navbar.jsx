@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Menu, X, User, Package, Linkedin, Instagram, Youtube
+  Menu, X, User, Package, Linkedin, Instagram, Youtube, ShieldCheck
 } from 'lucide-react';
 
 export const Navbar = ({ 
@@ -14,6 +14,18 @@ export const Navbar = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+
+  const userAvatar =
+    currentUser?.picture ||
+    currentUser?.googlePicture ||
+    currentUser?.google_picture ||
+    currentUser?.avatar ||
+    '';
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [userAvatar]);
 
   const isSolidHeader = isScrolled || currentPage !== 'home';
 
@@ -34,7 +46,7 @@ export const Navbar = ({
       setActiveSection('sewa');
     } else if (currentPage === 'tracking') {
       setActiveSection('tracking');
-    } else if (currentPage === 'auth') {
+    } else if (currentPage === 'auth' || currentPage === 'profile') {
       setActiveSection('auth');
     } else {
       setActiveSection('home');
@@ -134,20 +146,60 @@ export const Navbar = ({
 
           {/* Action Buttons: Profile / Login / Register & Socials */}
           <div className="flex items-center space-x-1 sm:space-x-2">
-            {/* Profile / Auth Button (Arahkan ke New Page Login & Register) */}
+            {/* Profile / Auth Button (Arahkan ke Halaman Profil jika sudah login, atau Login & Register) */}
             <button
-              onClick={() => onNavigateSection && onNavigateSection('auth')}
-              className={`p-2 rounded-xl text-white hover:text-uii-gold hover:bg-white/10 transition-colors focus:outline-none relative ${
-                currentPage === 'auth' ? 'ring-2 ring-uii-gold text-uii-gold bg-white/20' : currentUser ? 'ring-2 ring-uii-gold/60 text-uii-gold bg-white/10' : ''
+              onClick={() => onNavigateSection && onNavigateSection(currentUser ? 'profile' : 'auth')}
+              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white hover:text-uii-gold hover:bg-white/10 transition-colors focus:outline-none relative flex-shrink-0 ${
+                currentPage === 'auth' || currentPage === 'profile' ? 'ring-2 ring-uii-gold text-uii-gold bg-white/20' : currentUser ? 'ring-2 ring-uii-gold/60 text-uii-gold bg-white/10' : ''
               }`}
-              title={currentUser ? `Akun: ${currentUser.name}` : "Halaman Masuk / Daftar Akun BPA"}
+              title={currentUser ? `Profil Saya: ${currentUser.name}` : "Halaman Masuk / Daftar Akun BPA"}
               aria-label="Profil Pengguna"
             >
-              <User className="w-4 h-4 sm:w-5 sm:h-5" />
+              {currentUser && userAvatar && !avatarError ? (
+                <img
+                  src={userAvatar}
+                  alt={currentUser.name || 'Profil Pengguna'}
+                  referrerPolicy="no-referrer"
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
               {currentUser && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-uii-blue-900" />
+                <span
+                  className={`absolute w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-uii-blue-900 ${
+                    userAvatar && !avatarError ? 'top-0 right-0' : 'top-0.5 right-0.5'
+                  }`}
+                />
               )}
             </button>
+
+            {/* Tombol Khusus Akses Divisi Staf bagi Pengguna Ber-role Staf */}
+            {currentUser && (String(currentUser.role || '').toLowerCase().includes('staf') || String(currentUser.role || '').toLowerCase().includes('staff')) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const staffSession = {
+                    name: currentUser.name,
+                    role: currentUser.role || 'Staf Operasional BPA',
+                    email: currentUser.email,
+                    division: currentUser.org || 'Divisi Operasional & Logistik BPA KM UII',
+                    picture: currentUser.picture || currentUser.googlePicture,
+                    loginTime: new Date().toLocaleString('id-ID')
+                  };
+                  try {
+                    localStorage.setItem('bpa_staff_session', JSON.stringify(staffSession));
+                  } catch {}
+                  window.location.href = '/staff';
+                }}
+                className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-uii-blue-950 font-black text-[10px] uppercase tracking-wider transition-all shadow-sm hover:scale-105 active:scale-95"
+                title="Buka Portal Operasional & Approval Staf"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-uii-blue-950" />
+                <span>Divisi Staf</span>
+              </button>
+            )}
 
             {/* Social media separator & circular white buttons (sesuai referensi: LinkedIn, Instagram, YouTube bulat putih) */}
             <div className="hidden lg:flex items-center space-x-2 pl-2 sm:pl-3 border-l border-white/20">
@@ -241,13 +293,47 @@ export const Navbar = ({
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    if (onNavigateSection) onNavigateSection('auth');
+                    if (onNavigateSection) onNavigateSection(currentUser ? 'profile' : 'auth');
                   }}
                   className="flex items-center justify-center space-x-2 w-full py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl border border-white/20 transition-colors text-xs uppercase tracking-wider"
                 >
-                  <User className="w-4 h-4 text-uii-gold" />
-                  <span>{currentUser ? `Akun: ${currentUser.name}` : 'Masuk / Daftar Akun'}</span>
+                  {currentUser && userAvatar && !avatarError ? (
+                    <img
+                      src={userAvatar}
+                      alt={currentUser.name || 'Profil Pengguna'}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarError(true)}
+                      className="w-5 h-5 rounded-full object-cover ring-1 ring-uii-gold flex-shrink-0"
+                    />
+                  ) : (
+                    <User className="w-4 h-4 text-uii-gold" />
+                  )}
+                  <span>{currentUser ? `Profil Saya: ${currentUser.name}` : 'Masuk / Daftar Akun'}</span>
                 </button>
+
+                {currentUser && (String(currentUser.role || '').toLowerCase().includes('staf') || String(currentUser.role || '').toLowerCase().includes('staff')) && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      const staffSession = {
+                        name: currentUser.name,
+                        role: currentUser.role || 'Staf Operasional BPA',
+                        email: currentUser.email,
+                        division: currentUser.org || 'Divisi Operasional & Logistik BPA KM UII',
+                        picture: currentUser.picture || currentUser.googlePicture,
+                        loginTime: new Date().toLocaleString('id-ID')
+                      };
+                      try {
+                        localStorage.setItem('bpa_staff_session', JSON.stringify(staffSession));
+                      } catch {}
+                      window.location.href = '/staff';
+                    }}
+                    className="flex items-center justify-center space-x-2 w-full py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 text-uii-blue-950 font-black rounded-xl shadow transition-colors text-xs uppercase tracking-wider"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-uii-blue-950" />
+                    <span>Portal Divisi Staf</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => {

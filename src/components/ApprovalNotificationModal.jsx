@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
@@ -12,7 +12,9 @@ import {
   ShieldCheck,
   FileText,
   User,
-  Building
+  Building,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export const ApprovalNotificationModal = ({
@@ -21,7 +23,17 @@ export const ApprovalNotificationModal = ({
   booking,
   onNavigateTracking
 }) => {
+  const [copied, setCopied] = useState(false);
+
   if (!isOpen || !booking) return null;
+
+  const handleCopyBookingCode = () => {
+    try {
+      navigator.clipboard?.writeText(booking.bookingCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
 
   const handleOpenWhatsAppStaff = () => {
     let msg = `Halo Staf Pengelola BPA KM UII, saya ingin mengonfirmasi pengajuan sewa yang baru saja saya kirim melalui Web BPA:\n\n`;
@@ -87,8 +99,22 @@ export const ApprovalNotificationModal = ({
             <h3 className="text-xl sm:text-2xl font-black font-heading text-white mt-1">
               Pengajuan Sewa Berhasil Dikirim!
             </h3>
-            <p className="text-xs text-slate-300 mt-1">
-              Nomor Registrasi: <strong className="text-uii-gold tracking-wide">{booking.bookingCode}</strong>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/10 border border-uii-gold/40">
+                <span className="text-[11px] text-slate-300">ID Lacak Sewa:</span>
+                <strong className="text-sm text-uii-gold tracking-wider font-mono">{booking.bookingCode}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyBookingCode}
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-uii-gold hover:bg-yellow-400 text-uii-blue-950 text-[11px] font-black transition-colors"
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? 'Tersalin' : 'Salin ID'}</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1.5">
+              Simpan ID singkat di atas untuk memasukkan & melacak progres sewa ini secara mandiri.
             </p>
           </div>
 
@@ -233,7 +259,7 @@ export const ApprovalNotificationModal = ({
           <div className="p-5 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-2.5">
             {onNavigateTracking && (
               <button
-                onClick={() => onNavigateTracking(booking.bookingCode)}
+                onClick={() => onNavigateTracking('')}
                 className="w-full py-3.5 px-4 rounded-2xl bg-uii-blue-950 hover:bg-uii-blue-900 text-uii-gold font-extrabold text-xs uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center space-x-2 border border-uii-gold/30"
               >
                 <span>🔍 Lacak Progres Persiapan Aset (Tracking Page)</span>
