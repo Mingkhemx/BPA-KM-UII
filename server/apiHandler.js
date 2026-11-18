@@ -4,6 +4,9 @@ import { hashPassword, verifyPassword } from './security.js';
 
 // Helper to parse JSON body from incoming Node HTTP request
 export async function parseBody(req) {
+  if (req.body && typeof req.body === 'object') {
+    return req.body;
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', chunk => { body += chunk; });
