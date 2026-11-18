@@ -63,7 +63,32 @@ const findBookingByCode = (list, rawCode) => {
   return null;
 };
 
+const isBookingCompleted = (b) => {
+  if (!b) return false;
+  const s = String(b.status || '').toUpperCase();
+  const pct = Number(b.progressPercent ?? 0);
+  return s === 'SELESAI' || pct >= 100;
+};
+
+const isBookingOwnedByUser = (b, user) => {
+  if (!b || !user) return false;
+  const userEmail = String(user.email || '').toLowerCase().trim();
+  const userName = String(user.name || '').toLowerCase().trim();
+  const custEmail = String(b.customer?.email || b.userEmail || '').toLowerCase().trim();
+  const custName = String(b.customer?.name || b.userName || '').toLowerCase().trim();
+
+  if (userEmail && custEmail) {
+    return userEmail === custEmail;
+  }
+  if (userName && custName) {
+    return userName === custName;
+  }
+  return false;
+};
+
 export const TrackingPage = ({
+  currentUser = null,
+  onRequireAuth,
   onBackHome,
   onNavigateSewa,
   initialBookingCode = '',
@@ -74,12 +99,49 @@ export const TrackingPage = ({
   
   // Kode Booking yang sedang dicari/dilihat (Kosong untuk user agar mengisi sendiri)
   const [searchCode, setSearchCode] = useState(() => initialBookingCode || '');
+  const [accessNotice, setAccessNotice] = useState(null);
 
-  // Booking yang saat ini aktif ditampilkan (Null jika user belum memasukkan kode)
+  const validateTrackingAccess = (found, rawQuery = '') => {
+    if (!found) {
+      return {
+        ok: false,
+        reason: 'not_found',
+        message: `ID "${rawQuery}" tidak ditemukan. Silakan periksa kembali kode sewa Anda.`
+      };
+    }
+    if (!currentUser) {
+      return {
+        ok: false,
+        reason: 'auth_required',
+        message: 'Silakan login menggunakan akun pemesan terlebih dahulu untuk melacak kode sewa ini.'
+      };
+    }
+    if (!isBookingOwnedByUser(found, currentUser)) {
+      return {
+        ok: false,
+        reason: 'forbidden',
+        message: 'Akses ditolak: Kode sewa ini hanya dapat dilacak oleh akun pemesan yang memiliki tiket pembelian.'
+      };
+    }
+    if (isBookingCompleted(found)) {
+      return {
+        ok: false,
+        reason: 'completed',
+        message: `Pesanan #${found.bookingCode} telah selesai (100%) dan tidak lagi ditampilkan di pelacakan aktif.`
+      };
+    }
+    return { ok: true, booking: found };
+  };
+
+  // Booking yang saat ini aktif ditampilkan (Null jika user belum memasukkan kode / tidak lolos validasi)
   const [currentBooking, setCurrentBooking] = useState(() => {
     if (!initialBookingCode) return null;
     const list = getAllMergedTrackingBookings();
-    return findBookingByCode(list, initialBookingCode);
+    const found = findBookingByCode(list, initialBookingCode);
+    if (!found || !currentUser || !isBookingOwnedByUser(found, currentUser) || isBookingCompleted(found)) {
+      return null;
+    }
+    return found;
   });
 
   // State Mode Staf BPA (Untuk Mengirimkan Update & Persentase)
@@ -112,13 +174,23 @@ export const TrackingPage = ({
       setAllBookings(merged);
       setCurrentBooking((prev) => {
         if (!prev?.bookingCode) return prev;
-        return findBookingByCode(merged, prev.bookingCode) || null;
+        const refreshed = findBookingByCode(merged, prev.bookingCode);
+        if (!refreshed || !isBookingOwnedByUser(refreshed, currentUser) || isBookingCompleted(refreshed)) {
+          if (refreshed && isBookingCompleted(refreshed)) {
+            setAccessNotice({
+              reason: 'completed',
+              message: `Pesanan #${refreshed.bookingCode} telah selesai (100%) dan tidak lagi ditampilkan di pelacakan aktif.`
+            });
+          }
+          return null;
+        }
+        return refreshed;
       });
     }).catch(() => {});
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [currentUser]);
 
   // Sinkronisasi otomatis real-time saat staf mengunggah pembaruan progres & foto
   useEffect(() => {
@@ -127,7 +199,17 @@ export const TrackingPage = ({
       setAllBookings(list);
       setCurrentBooking((prev) => {
         if (!prev?.bookingCode) return prev;
-        return findBookingByCode(list, prev.bookingCode) || prev;
+        const refreshed = findBookingByCode(list, prev.bookingCode);
+        if (!refreshed || !isBookingOwnedByUser(refreshed, currentUser) || isBookingCompleted(refreshed)) {
+          if (refreshed && isBookingCompleted(refreshed)) {
+            setAccessNotice({
+              reason: 'completed',
+              message: `Pesanan #${refreshed.bookingCode} telah selesai (100%) dan tidak lagi ditampilkan di pelacakan aktif.`
+            });
+          }
+          return null;
+        }
+        return refreshed;
       });
     };
 
@@ -137,20 +219,29 @@ export const TrackingPage = ({
       window.removeEventListener('bpa-data-updated', handleSync);
       window.removeEventListener('storage', handleSync);
     };
-  }, []);
+  }, [currentUser]);
 
-  // Reset / Sinkronisasi jika navigasi ke Lacak membawa kode baru atau resetKey berubah
+  // Reset / Sinkronisasi jika navigasi ke Lacak membawa kode baru atau resetKey berubah atau user berubah
   useEffect(() => {
     if (initialBookingCode) {
       const list = getAllMergedTrackingBookings();
       setAllBookings(list);
       setSearchCode(initialBookingCode);
-      setCurrentBooking(findBookingByCode(list, initialBookingCode));
+      const found = findBookingByCode(list, initialBookingCode);
+      const check = validateTrackingAccess(found, initialBookingCode);
+      if (check.ok) {
+        setCurrentBooking(check.booking);
+        setAccessNotice(null);
+      } else {
+        setCurrentBooking(null);
+        setAccessNotice({ reason: check.reason, message: check.message });
+      }
     } else {
       setSearchCode('');
       setCurrentBooking(null);
+      setAccessNotice(null);
     }
-  }, [initialBookingCode, resetKey]);
+  }, [initialBookingCode, resetKey, currentUser]);
 
   // Sinkronisasi saat currentBooking berubah
   useEffect(() => {
@@ -182,18 +273,22 @@ export const TrackingPage = ({
       }
     }
 
-    if (found) {
-      setCurrentBooking(found);
-      showToast(`Data sewa #${found.bookingCode} berhasil ditemukan!`);
+    const check = validateTrackingAccess(found, searchCode.trim());
+    if (check.ok) {
+      setCurrentBooking(check.booking);
+      setAccessNotice(null);
+      showToast(`Data sewa #${check.booking.bookingCode} berhasil ditemukan!`);
     } else {
       setCurrentBooking(null);
-      showToast(`ID "${searchCode.trim()}" tidak ditemukan. Silakan periksa kembali kode sewa Anda.`, 'error');
+      setAccessNotice({ reason: check.reason, message: check.message });
+      showToast(check.message, 'error');
     }
   };
 
   const handleClearSearch = () => {
     setSearchCode('');
     setCurrentBooking(null);
+    setAccessNotice(null);
   };
 
   const showToast = (msg, type = 'success') => {
@@ -1134,6 +1229,47 @@ export const TrackingPage = ({
 
             </div>
 
+          </div>
+        ) : accessNotice ? (
+          /* Pesan Status / Validasi Akses Pelacakan */
+          <div className="bg-white rounded-3xl p-10 sm:p-12 text-center border border-slate-200 max-w-xl mx-auto shadow-sm space-y-4">
+            <div
+              className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto ${
+                accessNotice.reason === 'completed'
+                  ? 'bg-emerald-50 text-emerald-600'
+                  : accessNotice.reason === 'forbidden' || accessNotice.reason === 'not_found'
+                  ? 'bg-rose-50 text-rose-600'
+                  : 'bg-amber-50 text-amber-600'
+              }`}
+            >
+              {accessNotice.reason === 'completed' ? (
+                <CheckCircle2 className="w-8 h-8" />
+              ) : (
+                <AlertCircle className="w-8 h-8" />
+              )}
+            </div>
+            <h3 className="text-lg font-black text-uii-blue-950 font-heading">
+              {accessNotice.reason === 'completed'
+                ? 'Pesanan Sudah Selesai'
+                : accessNotice.reason === 'forbidden'
+                ? 'Akses Pelacakan Ditolak'
+                : accessNotice.reason === 'auth_required'
+                ? 'Login Akun Pemesan Diperlukan'
+                : 'ID Sewa Tidak Ditemukan'}
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {accessNotice.message}
+            </p>
+            {accessNotice.reason === 'auth_required' && onRequireAuth && (
+              <button
+                type="button"
+                onClick={onRequireAuth}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-uii-blue-950 hover:bg-uii-blue-900 text-uii-gold font-black text-xs uppercase tracking-wider transition-colors shadow-sm"
+              >
+                <User className="w-4 h-4" />
+                <span>Login Akun Pemesan</span>
+              </button>
+            )}
           </div>
         ) : (
           /* Empty State Jika Belum Memasukkan Kode */

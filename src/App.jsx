@@ -732,6 +732,11 @@ export function App() {
         ) : currentPage === 'tracking' ? (
           /* Dedicated Live Tracking & Preparation Page (User & Staff Views) */
           <TrackingPage
+            currentUser={currentUser}
+            onRequireAuth={() => {
+              setCurrentPage('auth');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             onBackHome={() => {
               setCurrentPage('home');
               window.scrollTo({ top: 0, behavior: 'smooth' });
